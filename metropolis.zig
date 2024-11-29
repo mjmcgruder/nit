@@ -69,6 +69,25 @@ const tp: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
 const up: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f64 = 90.0; // horizontal field of view in degrees
 
+// scene definition
+
+const Sphere = struct {
+    c: Vec3, // center
+    r: f64, // radius
+
+    pub fn intersect(this: *const Sphere, ro: *const Vec3, rd: *const Vec3) f64 {
+        const oc: Vec3 = sub(ro.*, this.c);
+        const b: f64 = dot(oc, rd.*);
+        const qc: Vec3 = sub(oc, mul(b, rd.*));
+        const h: f64 = this.r * this.r - dot(qc, qc);
+        if (h < 0.0) {
+            return -1.0;
+        } else {
+            return -b - @sqrt(h);
+        }
+    }
+};
+
 // main program
 
 const Pixel = struct {
@@ -102,16 +121,10 @@ pub fn main() !void {
     // initialize image
 
     const frame_buffer: []Pixel = try allocator.alloc(Pixel, window_w * window_h);
-    for (frame_buffer, 0..) |*item, i| {
-        const r: usize = i / window_w;
-        const c: usize = i - (window_w * r);
-        const r_flt: f64 = @floatFromInt(r);
-        const c_flt: f64 = @floatFromInt(c);
-        const w_flt: f64 = @floatFromInt(window_w);
-        const h_flt: f64 = @floatFromInt(window_h);
-        item.*.r = @intFromFloat((c_flt / w_flt) * 255.0);
-        item.*.g = @intFromFloat((r_flt / h_flt) * 255.0);
-        item.*.b = 0;
+    for (frame_buffer) |*item| {
+        item.r = 0;
+        item.g = 0;
+        item.b = 0;
     }
 
     // initialize rays
@@ -139,13 +152,26 @@ pub fn main() !void {
         item.* = normalize(add(ul, add(mul(-inc_h * r_flt, v), mul(inc_w * c_flt, b))));
     }
 
-    const rays_image: []Pixel = try allocator.alloc(Pixel, window_w * window_h);
-    for (rays, rays_image) |*ray, *ray_image| {
-        ray_image.*.r = 0;
-        ray_image.*.g = @intFromFloat(0.5 * (ray.*.y + 1.0) * 255.0);
-        ray_image.*.b = @intFromFloat(0.5 * (ray.*.z + 1.0) * 255.0);
+    // render a depth map with a single sphere
+
+    const object = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.2, .z = -0.3 }, .r = 0.3 };
+    const near = 0.5;
+    const far = 1.5;
+
+    for (rays, frame_buffer) |*ray, *pixel| {
+        const dist = object.intersect(&cp, ray);
+        if (dist == -1.0) {
+            pixel.r = 0;
+            pixel.g = 0;
+            pixel.b = 0;
+        } else {
+            const scale = (dist - near) / (far - near);
+            const scale_int: u8 = @intFromFloat(scale * 255.0);
+            pixel.r = scale_int;
+            pixel.g = scale_int;
+            pixel.b = scale_int;
+        }
     }
 
     try writeImage(frame_buffer, "image.ppm");
-    try writeImage(rays_image, "normals.ppm");
 }
