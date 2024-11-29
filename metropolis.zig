@@ -1,5 +1,67 @@
 const std = @import("std");
 
+// math library
+
+const Vec3 = struct {
+    x: f64 = 0.0,
+    y: f64 = 0.0,
+    z: f64 = 0.0,
+};
+
+fn broadcast(a: anytype) Vec3 {
+    if (@TypeOf(a) == Vec3) {
+        return a;
+    } else if (@TypeOf(a) == comptime_float) {
+        return Vec3{ .x = a, .y = a, .z = a };
+    } else if (@TypeOf(a) == f64) {
+        return Vec3{ .x = a, .y = a, .z = a };
+    } else {
+        comptime unreachable;
+    }
+}
+
+fn add(a_in: anytype, b_in: anytype) Vec3 {
+    const a: Vec3 = broadcast(a_in);
+    const b: Vec3 = broadcast(b_in);
+    return Vec3{ .x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z };
+}
+
+fn sub(a_in: anytype, b_in: anytype) Vec3 {
+    const a: Vec3 = broadcast(a_in);
+    const b: Vec3 = broadcast(b_in);
+    return Vec3{ .x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z };
+}
+
+fn mul(a_in: anytype, b_in: anytype) Vec3 {
+    const a: Vec3 = broadcast(a_in);
+    const b: Vec3 = broadcast(b_in);
+    return Vec3{ .x = a.x * b.x, .y = a.y * b.y, .z = a.z * b.z };
+}
+
+fn div(a_in: anytype, b_in: anytype) Vec3 {
+    const a: Vec3 = broadcast(a_in);
+    const b: Vec3 = broadcast(b_in);
+    return Vec3{ .x = a.x / b.x, .y = a.y / b.y, .z = a.z / b.z };
+}
+
+fn dot(a: Vec3, b: Vec3) f64 {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+fn cross(a: Vec3, b: Vec3) Vec3 {
+    return Vec3{ .x = a.y * b.z - a.z * b.y, .y = a.z * b.x - a.x * b.z, .z = a.x * b.y - a.y * b.x };
+}
+
+fn mag(a: Vec3) f64 {
+    return @sqrt(dot(a, a));
+}
+
+fn normalize(a: Vec3) Vec3 {
+    return div(a, mag(a));
+}
+
+// main program
+
 const window_w: usize = 640;
 const window_h: usize = 480;
 
