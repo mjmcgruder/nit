@@ -62,8 +62,8 @@ fn normalize(a: Vec3) Vec3 {
 
 // settings
 
-const window_w: usize = 640; // window width in pixels
-const window_h: usize = 480; // window height in pixels
+const window_w: usize = 1920; // window width in pixels
+const window_h: usize = 1080; // window height in pixels
 const cp: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 }; // camera position
 const tp: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
 const up: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
@@ -75,28 +75,24 @@ const Sphere = struct {
     c: Vec3, // center
     r: f64, // radius
 
-    pub fn intersect(this: *const Sphere, ro: *const Vec3, rd: *const Vec3) f64 {
-        const oc: Vec3 = sub(ro.*, this.c);
-        const b: f64 = dot(oc, rd.*);
-        const qc: Vec3 = sub(oc, mul(b, rd.*));
+    // Adapted from Inigo Quilez's ray-sphere intersection routine.
+    pub fn intersect(this: Sphere, ro: Vec3, rd: Vec3) ?f64 {
+        const oc: Vec3 = sub(ro, this.c);
+        const b: f64 = dot(oc, rd);
+        const qc: Vec3 = sub(oc, mul(b, rd));
         const h: f64 = this.r * this.r - dot(qc, qc);
-        if (h < 0.0) {
-            return -1.0;
-        } else {
-            return -b - @sqrt(h);
-        }
+        return if (h < 0.0) null else -b - @sqrt(h);
     }
 };
 
 // main program
 
 const Pixel = struct {
-    r: u8,
-    g: u8,
-    b: u8,
+    r: u8 = 0,
+    g: u8 = 0,
+    b: u8 = 0,
 };
 
-// TODO: pass by reference
 fn writeImage(frame_buffer: []const Pixel, file_name: []const u8) !void {
     const file: std.fs.File = try std.fs.cwd().createFile(file_name, .{});
     defer file.close();
@@ -121,11 +117,7 @@ pub fn main() !void {
     // initialize image
 
     const frame_buffer: []Pixel = try allocator.alloc(Pixel, window_w * window_h);
-    for (frame_buffer) |*item| {
-        item.r = 0;
-        item.g = 0;
-        item.b = 0;
-    }
+    @memset(frame_buffer, Pixel{});
 
     // initialize rays
 
@@ -155,22 +147,28 @@ pub fn main() !void {
     // render a depth map with a single sphere
 
     const object = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.2, .z = -0.3 }, .r = 0.3 };
-    const near = 0.5;
-    const far = 1.5;
 
-    for (rays, frame_buffer) |*ray, *pixel| {
-        const dist = object.intersect(&cp, ray);
-        if (dist == -1.0) {
-            pixel.r = 0;
-            pixel.g = 0;
-            pixel.b = 0;
-        } else {
-            const scale = (dist - near) / (far - near);
-            const scale_int: u8 = @intFromFloat(scale * 255.0);
-            pixel.r = scale_int;
-            pixel.g = scale_int;
-            pixel.b = scale_int;
+    // find depth map and limits
+    var min_depth: f64 = std.math.floatMax(f64);
+    var max_depth: f64 = -std.math.floatMax(f64);
+    const depths: []f64 = try allocator.alloc(f64, window_w * window_h);
+    @memset(depths, 0.0);
+    for (rays, depths) |*ray, *depth| {
+        if (object.intersect(cp, ray.*)) |dist| {
+            depth.* = dist;
+            min_depth = @min(min_depth, dist);
+            max_depth = @max(max_depth, dist);
         }
+    }
+
+    // write depth map to frame buffer
+    for (frame_buffer, depths) |*pixel, *depth| {
+        const scale = (depth.* - min_depth) / (max_depth - min_depth);
+        if (scale < 0.0 or scale > 1.0) continue;
+        const scale_int: u8 = @intFromFloat(scale * 255.0);
+        pixel.r = scale_int;
+        pixel.g = scale_int;
+        pixel.b = scale_int;
     }
 
     try writeImage(frame_buffer, "image.ppm");
