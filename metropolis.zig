@@ -85,6 +85,12 @@ const Sphere = struct {
     }
 };
 
+const scene = [_]Sphere{
+    Sphere{ .c = Vec3{ .x = 0.9, .y = 0.2, .z = 0.2 }, .r = 0.1 },
+    Sphere{ .c = Vec3{ .x = 0.8, .y = -0.4, .z = 0.6 }, .r = 0.5 },
+    Sphere{ .c = Vec3{ .x = 0.9, .y = 0.0, .z = 0.0 }, .r = 0.1 },
+};
+
 // main program
 
 const Pixel = struct {
@@ -146,18 +152,18 @@ pub fn main() !void {
 
     // render a depth map with a single sphere
 
-    const object = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.2, .z = -0.3 }, .r = 0.3 };
-
     // find depth map and limits
     var min_depth: f64 = std.math.floatMax(f64);
     var max_depth: f64 = -std.math.floatMax(f64);
     const depths: []f64 = try allocator.alloc(f64, window_w * window_h);
-    @memset(depths, 0.0);
+    @memset(depths, std.math.floatMax(f64));
     for (rays, depths) |*ray, *depth| {
-        if (object.intersect(cp, ray.*)) |dist| {
-            depth.* = dist;
-            min_depth = @min(min_depth, dist);
-            max_depth = @max(max_depth, dist);
+        for (&scene) |*object| {
+            if (object.intersect(cp, ray.*)) |dist| {
+                depth.* = @min(depth.*, dist);
+                min_depth = @min(min_depth, dist);
+                max_depth = @max(max_depth, dist);
+            }
         }
     }
 
