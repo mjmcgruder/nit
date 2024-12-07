@@ -69,7 +69,7 @@ const tp: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
 const up: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f64 = 90.0; // horizontal field of view in degrees
 
-// scene definition
+// geometry definitions
 
 const Sphere = struct {
     c: Vec3, // center
@@ -85,10 +85,30 @@ const Sphere = struct {
     }
 };
 
-const scene = [_]Sphere{
-    Sphere{ .c = Vec3{ .x = 0.9, .y = 0.2, .z = 0.2 }, .r = 0.1 },
-    Sphere{ .c = Vec3{ .x = 0.8, .y = -0.4, .z = 0.6 }, .r = 0.5 },
-    Sphere{ .c = Vec3{ .x = 0.9, .y = 0.0, .z = 0.0 }, .r = 0.1 },
+const Object = struct {
+    geometry: Sphere,
+    emittance: Vec3,
+    // orientation(when?)
+};
+
+const BounceNode = struct {
+    brdf: f64,
+    cos_theta: f64,
+    p: f64,
+    emittance: f64,
+};
+
+// scene definition
+
+const scene = [_]Object{
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.0, .z = -0.12 }, .r = 0.1 },
+        .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.0, .z = 0.12 }, .r = 0.1 },
+        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    },
 };
 
 // main program
@@ -159,7 +179,7 @@ pub fn main() !void {
     @memset(depths, std.math.floatMax(f64));
     for (rays, depths) |*ray, *depth| {
         for (&scene) |*object| {
-            if (object.intersect(cp, ray.*)) |dist| {
+            if (object.geometry.intersect(cp, ray.*)) |dist| {
                 depth.* = @min(depth.*, dist);
                 min_depth = @min(min_depth, dist);
                 max_depth = @max(max_depth, dist);
@@ -176,6 +196,38 @@ pub fn main() !void {
         pixel.g = scale_int;
         pixel.b = scale_int;
     }
+
+    // render diffuse reflection
+
+    const max_bounces = 1 << 2;
+    var bounce_stk: [max_bounces]BounceNode = undefined;
+    var bounce_pos: u64 = undefined;
+
+    for (rays, frame_buffer) |*ray, *pixel| {
+        bounce_pos = 0;
+        // build bounce stack
+        while (bounce_pos < max_bounces) : (bounce_pos += 1) {
+            // find the nearest intersected object
+            var closest_distance: f64 = std.math.floatMax(f64);
+            var closest_object: Object = undefined;
+            var closest_normal: Vec3 = undefined;
+            for (&scene) |*object| {
+                if (object.geometry.intersect(cp, ray.*)) |dist| {
+                    if (dist < closest_distance) {
+                        closest_distance = dist;
+                        closest_object = object;
+                        closest_normal = // TODO: add normals to intersection routine
+                    }
+                }
+            }
+
+            // TODO: if closest distance is still initial value, break the while and continue to bounce stack unwinding
+            // TODO: calculate BRDF et al. for the bounce stack
+        }
+
+        // TODO: accumulate color by unwinding bounce stack
+    }
+
 
     try writeImage(frame_buffer, "image.ppm");
 }
