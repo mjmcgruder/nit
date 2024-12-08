@@ -317,7 +317,9 @@ pub fn main() !void {
             pixel_color = add(pixel_color, mul(incoming, 1.0 / num_samples_flt));
         }
         // set final color value
-        pixel_color = if (is_zero(pixel_color)) Vec3{} else div(pixel_color, max_val(pixel_color));
+        if (max_val(pixel_color) > 1.0) {
+            pixel_color = div(pixel_color, max_val(pixel_color));
+        }
         pixel.r = @intFromFloat(pixel_color.x * 255.0);
         pixel.g = @intFromFloat(pixel_color.y * 255.0);
         pixel.b = @intFromFloat(pixel_color.z * 255.0);
