@@ -8,6 +8,10 @@ const Vec3 = struct {
     z: f64 = 0.0,
 };
 
+const unit_x: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 };
+const unit_y: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+const unit_z: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
+
 fn broadcast(a: anytype) Vec3 {
     if (@TypeOf(a) == Vec3) {
         return a;
@@ -23,25 +27,41 @@ fn broadcast(a: anytype) Vec3 {
 fn add(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
-    return Vec3{ .x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z };
+    return Vec3{
+        .x = a.x + b.x,
+        .y = a.y + b.y,
+        .z = a.z + b.z,
+    };
 }
 
 fn sub(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
-    return Vec3{ .x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z };
+    return Vec3{
+        .x = a.x - b.x,
+        .y = a.y - b.y,
+        .z = a.z - b.z,
+    };
 }
 
 fn mul(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
-    return Vec3{ .x = a.x * b.x, .y = a.y * b.y, .z = a.z * b.z };
+    return Vec3{
+        .x = a.x * b.x,
+        .y = a.y * b.y,
+        .z = a.z * b.z,
+    };
 }
 
 fn div(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
-    return Vec3{ .x = a.x / b.x, .y = a.y / b.y, .z = a.z / b.z };
+    return Vec3{
+        .x = a.x / b.x,
+        .y = a.y / b.y,
+        .z = a.z / b.z,
+    };
 }
 
 fn dot(a: Vec3, b: Vec3) f64 {
@@ -49,7 +69,11 @@ fn dot(a: Vec3, b: Vec3) f64 {
 }
 
 fn cross(a: Vec3, b: Vec3) Vec3 {
-    return Vec3{ .x = a.y * b.z - a.z * b.y, .y = a.z * b.x - a.x * b.z, .z = a.x * b.y - a.y * b.x };
+    return Vec3{
+        .x = a.y * b.z - a.z * b.y,
+        .y = a.z * b.x - a.x * b.z,
+        .z = a.x * b.y - a.y * b.x,
+    };
 }
 
 fn mag(a: Vec3) f64 {
@@ -58,6 +82,14 @@ fn mag(a: Vec3) f64 {
 
 fn normalize(a: Vec3) Vec3 {
     return div(a, mag(a));
+}
+
+fn max_val(a: Vec3) f64 {
+    return @max(@max(a.x, a.y), a.z);
+}
+
+fn is_zero(a: Vec3) bool {
+    return a.x == 0.0 and a.y == 0.0 and a.z == 0.0;
 }
 
 // settings
@@ -71,17 +103,29 @@ const fov: f64 = 90.0; // horizontal field of view in degrees
 
 // geometry definitions
 
+const IntersectResult = struct {
+    dist: f64,
+    norm: Vec3,
+};
+
 const Sphere = struct {
     c: Vec3, // center
     r: f64, // radius
 
     // Adapted from Inigo Quilez's ray-sphere intersection routine.
-    pub fn intersect(this: Sphere, ro: Vec3, rd: Vec3) ?f64 {
+    //   Note that this routine is only correct if ro is outside the sphere.
+    pub fn intersect(this: Sphere, ro: Vec3, rd: Vec3) ?IntersectResult {
         const oc: Vec3 = sub(ro, this.c);
         const b: f64 = dot(oc, rd);
         const qc: Vec3 = sub(oc, mul(b, rd));
         const h: f64 = this.r * this.r - dot(qc, qc);
-        return if (h < 0.0) null else -b - @sqrt(h);
+        if (h < 0.0)
+            return null;
+        const t: f64 = -b - @sqrt(h);
+        if (t <= 0.0)
+            return null;
+        const n: Vec3 = normalize(sub(add(ro, mul(rd, t)), this.c));
+        return IntersectResult{ .dist = t, .norm = n };
     }
 };
 
@@ -92,10 +136,10 @@ const Object = struct {
 };
 
 const BounceNode = struct {
-    brdf: f64,
-    cos_theta: f64,
-    p: f64,
-    emittance: f64,
+    brdf: f64 = 0.0,
+    cos_theta: f64 = 0.0,
+    p: f64 = 1.0,
+    emittance: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
 };
 
 // scene definition
@@ -170,64 +214,114 @@ pub fn main() !void {
         item.* = normalize(add(ul, add(mul(-inc_h * r_flt, v), mul(inc_w * c_flt, b))));
     }
 
-    // render a depth map with a single sphere
+    // render a depth map
 
-    // find depth map and limits
-    var min_depth: f64 = std.math.floatMax(f64);
-    var max_depth: f64 = -std.math.floatMax(f64);
-    const depths: []f64 = try allocator.alloc(f64, window_w * window_h);
-    @memset(depths, std.math.floatMax(f64));
-    for (rays, depths) |*ray, *depth| {
-        for (&scene) |*object| {
-            if (object.geometry.intersect(cp, ray.*)) |dist| {
-                depth.* = @min(depth.*, dist);
-                min_depth = @min(min_depth, dist);
-                max_depth = @max(max_depth, dist);
-            }
-        }
-    }
-
-    // write depth map to frame buffer
-    for (frame_buffer, depths) |*pixel, *depth| {
-        const scale = (depth.* - min_depth) / (max_depth - min_depth);
-        if (scale < 0.0 or scale > 1.0) continue;
-        const scale_int: u8 = @intFromFloat(scale * 255.0);
-        pixel.r = scale_int;
-        pixel.g = scale_int;
-        pixel.b = scale_int;
-    }
+    // // find depth map and limits
+    // var min_depth: f64 = std.math.floatMax(f64);
+    // var max_depth: f64 = -std.math.floatMax(f64);
+    // const depths: []f64 = try allocator.alloc(f64, window_w * window_h);
+    // @memset(depths, std.math.floatMax(f64));
+    // for (rays, depths) |*ray, *depth| {
+    //     for (&scene) |*object| {
+    //         if (object.geometry.intersect(cp, ray.*)) |result| {
+    //             depth.* = @min(depth.*, result.dist);
+    //             min_depth = @min(min_depth, result.dist);
+    //             max_depth = @max(max_depth, result.dist);
+    //         }
+    //     }
+    // }
+    //
+    // // write depth map to frame buffer
+    // for (frame_buffer, depths) |*pixel, *depth| {
+    //     const scale = (depth.* - min_depth) / (max_depth - min_depth);
+    //     if (scale < 0.0 or scale > 1.0) continue;
+    //     const scale_int: u8 = @intFromFloat(scale * 255.0);
+    //     pixel.r = scale_int;
+    //     pixel.g = scale_int;
+    //     pixel.b = scale_int;
+    // }
 
     // render diffuse reflection
 
-    const max_bounces = 1 << 2;
-    var bounce_stk: [max_bounces]BounceNode = undefined;
-    var bounce_pos: u64 = undefined;
+    const max_bounces = 2;
+    const num_samples = 1 << 2;
+    const num_samples_flt: f64 = @floatFromInt(num_samples);
 
-    for (rays, frame_buffer) |*ray, *pixel| {
-        bounce_pos = 0;
-        // build bounce stack
-        while (bounce_pos < max_bounces) : (bounce_pos += 1) {
-            // find the nearest intersected object
-            var closest_distance: f64 = std.math.floatMax(f64);
-            var closest_object: Object = undefined;
-            var closest_normal: Vec3 = undefined;
-            for (&scene) |*object| {
-                if (object.geometry.intersect(cp, ray.*)) |dist| {
-                    if (dist < closest_distance) {
-                        closest_distance = dist;
-                        closest_object = object;
-                        closest_normal = // TODO: add normals to intersection routine
+    var prng = std.rand.DefaultPrng.init(42);
+    const rng = prng.random();
+
+    var bounce_stack: [max_bounces]BounceNode = undefined;
+    var stack_i: usize = undefined;
+
+    for (rays, frame_buffer) |*initial_ray, *pixel| {
+        var sample_i: usize = 0;
+        var pixel_color: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+        while (sample_i < num_samples) : (sample_i += 1) {
+            stack_i = 0;
+            // build bounce stack
+            var ro: Vec3 = cp;
+            var rd: Vec3 = initial_ray.*;
+            while (stack_i < max_bounces) : (stack_i += 1) {
+                // find the nearest intersected object
+                var closest_dist: f64 = std.math.floatMax(f64);
+                var closest_norm: Vec3 = undefined;
+                var closest_obj: *const Object = undefined;
+                for (&scene) |*object| {
+                    if (object.geometry.intersect(ro, rd)) |result| {
+                        if (result.dist < closest_dist) {
+                            closest_dist = result.dist;
+                            closest_norm = result.norm;
+                            closest_obj = object;
+                        }
                     }
                 }
+                // if no intersection, you're done
+                if (closest_dist == std.math.floatMax(f64)) {
+                    break;
+                }
+                // choose outgoing ray (randomly chosen direction) (normalize)
+                const local_z: Vec3 = closest_norm;
+                const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
+                const local_x: Vec3 = normalize(cross(local_y, local_z));
+                const theta: f64 = rng.float(f64) * 2.0 * std.math.pi;
+                const u: f64 = rng.float(f64);
+                const x: f64 = @sqrt(1.0 - u * u) * @cos(theta);
+                const y: f64 = @sqrt(1.0 - u * u) * @sin(theta);
+                const z: f64 = u;
+                const new_ray: Vec3 = normalize(
+                    add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)),
+                );
+
+                // TODO: calculate BRDF et al. for the bounce stack
+                bounce_stack[stack_i] = BounceNode{
+                    .brdf = 0.0,
+                    .cos_theta = 0.0,
+                    .p = 1.0,
+                    .emittance = closest_obj.emittance,
+                };
+
+                ro = add(add(ro, mul(rd, closest_dist)), mul(new_ray, 1e-6));
+                rd = new_ray;
             }
-
-            // TODO: if closest distance is still initial value, break the while and continue to bounce stack unwinding
-            // TODO: calculate BRDF et al. for the bounce stack
+            // accumulate incoming color by unwinding bounce stack
+            var incoming: Vec3 = Vec3{}; // start black
+            while (stack_i > 0) {
+                stack_i -= 1;
+                const node: BounceNode = bounce_stack[stack_i];
+                incoming = add(incoming, add(
+                    node.emittance,
+                    mul(mul(mul(node.brdf, incoming), node.cos_theta), 1.0 / node.p),
+                ));
+            }
+            // average sample color into pixel color
+            pixel_color = add(pixel_color, mul(incoming, 1.0 / num_samples_flt));
         }
-
-        // TODO: accumulate color by unwinding bounce stack
+        // set final color value
+        pixel_color = if (is_zero(pixel_color)) Vec3{} else div(pixel_color, max_val(pixel_color));
+        pixel.r = @intFromFloat(pixel_color.x * 255.0);
+        pixel.g = @intFromFloat(pixel_color.y * 255.0);
+        pixel.b = @intFromFloat(pixel_color.z * 255.0);
     }
-
 
     try writeImage(frame_buffer, "image.ppm");
 }
