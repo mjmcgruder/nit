@@ -122,7 +122,7 @@ const Sphere = struct {
         if (h < 0.0)
             return null;
         const t: f64 = -b - @sqrt(h);
-        if (t <= 0.0)
+        if (t <= 0.0) // tad clunky, no?
             return null;
         const n: Vec3 = normalize(sub(add(ro, mul(rd, t)), this.c));
         return IntersectResult{ .dist = t, .norm = n };
@@ -131,12 +131,13 @@ const Sphere = struct {
 
 const Object = struct {
     geometry: Sphere,
+    albedo: Vec3,
     emittance: Vec3,
     // orientation(when?)
 };
 
 const BounceNode = struct {
-    brdf: f64 = 0.0,
+    brdf: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     cos_theta: f64 = 0.0,
     p: f64 = 1.0,
     emittance: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
@@ -147,10 +148,32 @@ const BounceNode = struct {
 const scene = [_]Object{
     Object{
         .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.0, .z = -0.12 }, .r = 0.1 },
+        .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 0.2, .y = 0.14, .z = 0.08 }, .r = 0.05 },
+        .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 0.2, .y = -0.14, .z = 0.08 }, .r = 0.05 },
+        .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
     },
     Object{
         .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.0, .z = 0.12 }, .r = 0.1 },
+        .albedo = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 },
+        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.1, .z = 0.0 }, .r = 0.05 },
+        .albedo = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 },
+        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = -0.1, .z = 0.0 }, .r = 0.05 },
+        .albedo = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 },
         .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
 };
@@ -243,8 +266,8 @@ pub fn main() !void {
 
     // render diffuse reflection
 
-    const max_bounces = 2;
-    const num_samples = 1 << 2;
+    const max_bounces = 1 << 3;
+    const num_samples = 1 << 11;
     const num_samples_flt: f64 = @floatFromInt(num_samples);
 
     var prng = std.rand.DefaultPrng.init(42);
@@ -292,11 +315,10 @@ pub fn main() !void {
                     add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)),
                 );
 
-                // TODO: calculate BRDF et al. for the bounce stack
                 bounce_stack[stack_i] = BounceNode{
-                    .brdf = 0.0,
-                    .cos_theta = 0.0,
-                    .p = 1.0,
+                    .brdf = mul(closest_obj.albedo, 1.0 / std.math.pi),
+                    .cos_theta = dot(new_ray, closest_norm),
+                    .p = 1.0 / (2.0 * std.math.pi),
                     .emittance = closest_obj.emittance,
                 };
 
@@ -308,10 +330,10 @@ pub fn main() !void {
             while (stack_i > 0) {
                 stack_i -= 1;
                 const node: BounceNode = bounce_stack[stack_i];
-                incoming = add(incoming, add(
+                incoming = add(
                     node.emittance,
                     mul(mul(mul(node.brdf, incoming), node.cos_theta), 1.0 / node.p),
-                ));
+                );
             }
             // average sample color into pixel color
             pixel_color = add(pixel_color, mul(incoming, 1.0 / num_samples_flt));
