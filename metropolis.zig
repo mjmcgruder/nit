@@ -84,22 +84,9 @@ fn normalize(a: Vec3) Vec3 {
     return div(a, mag(a));
 }
 
-fn max_val(a: Vec3) f64 {
-    return @max(@max(a.x, a.y), a.z);
+fn clamp(a: f64, comptime min: f64, comptime max: f64) f64 {
+    return if (a < min) min else if (a > max) max else a;
 }
-
-fn is_zero(a: Vec3) bool {
-    return a.x == 0.0 and a.y == 0.0 and a.z == 0.0;
-}
-
-// settings
-
-const window_w: usize = 1920; // window width in pixels
-const window_h: usize = 1080; // window height in pixels
-const cp: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 }; // camera position
-const tp: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
-const up: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
-const fov: f64 = 90.0; // horizontal field of view in degrees
 
 // geometry definitions
 
@@ -143,37 +130,50 @@ const BounceNode = struct {
     emittance: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
 };
 
+// quality settings
+
+const max_bounces = 1 << 3;
+const num_samples = 1 << 5;
+
 // scene definition
+
+const window_w: usize = 1920; // window width in pixels
+const window_h: usize = 1080; // window height in pixels
+
+const cp: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 }; // camera position
+const tp: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
+const up: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
+const fov: f64 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.0, .z = -0.12 }, .r = 0.1 },
+        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.4, .z = 0.0 }, .r = 0.1 },
         .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emittance = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 0.2, .y = 0.14, .z = 0.08 }, .r = 0.05 },
-        .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-    },
-    Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 0.2, .y = -0.14, .z = 0.08 }, .r = 0.05 },
-        .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emittance = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-    },
-    Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.0, .z = 0.12 }, .r = 0.1 },
-        .albedo = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 },
+        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 }, .r = 1000.0 },
+        .albedo = Vec3{ .x = 0.75, .y = 0.0, .z = 0.0 },
         .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = 0.1, .z = 0.0 }, .r = 0.05 },
-        .albedo = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 },
+        .geometry = Sphere{ .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 }, .r = 1000.0 },
+        .albedo = Vec3{ .x = 0.0, .y = 0.75, .z = 0.0 },
         .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 0.25, .y = -0.1, .z = 0.0 }, .r = 0.05 },
-        .albedo = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 },
+        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 }, .r = 1000.0 },
+        .albedo = Vec3{ .x = 0.0, .y = 0.0, .z = 0.75 },
+        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 }, .r = 1000.0 },
+        .albedo = Vec3{ .x = 0.75, .y = 0.75, .z = 0.0 },
+        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    },
+    Object{
+        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 }, .r = 1000.0 },
+        .albedo = Vec3{ .x = 0.0, .y = 0.75, .z = 0.75 },
         .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
 };
@@ -266,8 +266,6 @@ pub fn main() !void {
 
     // render diffuse reflection
 
-    const max_bounces = 1 << 3;
-    const num_samples = 1 << 11;
     const num_samples_flt: f64 = @floatFromInt(num_samples);
 
     var prng = std.rand.DefaultPrng.init(42);
@@ -322,7 +320,7 @@ pub fn main() !void {
                     .emittance = closest_obj.emittance,
                 };
 
-                ro = add(add(ro, mul(rd, closest_dist)), mul(new_ray, 1e-6));
+                ro = add(ro, mul(rd, closest_dist));
                 rd = new_ray;
             }
             // accumulate incoming color by unwinding bounce stack
@@ -339,9 +337,9 @@ pub fn main() !void {
             pixel_color = add(pixel_color, mul(incoming, 1.0 / num_samples_flt));
         }
         // set final color value
-        if (max_val(pixel_color) > 1.0) {
-            pixel_color = div(pixel_color, max_val(pixel_color));
-        }
+        pixel_color.x = clamp(pixel_color.x, 0.0, 1.0);
+        pixel_color.y = clamp(pixel_color.y, 0.0, 1.0);
+        pixel_color.z = clamp(pixel_color.z, 0.0, 1.0);
         pixel.r = @intFromFloat(pixel_color.x * 255.0);
         pixel.g = @intFromFloat(pixel_color.y * 255.0);
         pixel.b = @intFromFloat(pixel_color.z * 255.0);
