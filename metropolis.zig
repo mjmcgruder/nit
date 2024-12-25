@@ -12,7 +12,7 @@ const unit_x: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 };
 const unit_y: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
 const unit_z: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
 
-fn broadcast(a: anytype) Vec3 {
+inline fn broadcast(a: anytype) Vec3 {
     if (@TypeOf(a) == Vec3) {
         return a;
     } else if (@TypeOf(a) == comptime_float) {
@@ -24,7 +24,7 @@ fn broadcast(a: anytype) Vec3 {
     }
 }
 
-fn add(a_in: anytype, b_in: anytype) Vec3 {
+inline fn add(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
     return Vec3{
@@ -34,7 +34,7 @@ fn add(a_in: anytype, b_in: anytype) Vec3 {
     };
 }
 
-fn sub(a_in: anytype, b_in: anytype) Vec3 {
+inline fn sub(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
     return Vec3{
@@ -44,7 +44,7 @@ fn sub(a_in: anytype, b_in: anytype) Vec3 {
     };
 }
 
-fn mul(a_in: anytype, b_in: anytype) Vec3 {
+inline fn mul(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
     return Vec3{
@@ -54,7 +54,7 @@ fn mul(a_in: anytype, b_in: anytype) Vec3 {
     };
 }
 
-fn div(a_in: anytype, b_in: anytype) Vec3 {
+inline fn div(a_in: anytype, b_in: anytype) Vec3 {
     const a: Vec3 = broadcast(a_in);
     const b: Vec3 = broadcast(b_in);
     return Vec3{
@@ -64,11 +64,11 @@ fn div(a_in: anytype, b_in: anytype) Vec3 {
     };
 }
 
-fn dot(a: Vec3, b: Vec3) f64 {
+inline fn dot(a: Vec3, b: Vec3) f64 {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-fn cross(a: Vec3, b: Vec3) Vec3 {
+inline fn cross(a: Vec3, b: Vec3) Vec3 {
     return Vec3{
         .x = a.y * b.z - a.z * b.y,
         .y = a.z * b.x - a.x * b.z,
@@ -76,32 +76,34 @@ fn cross(a: Vec3, b: Vec3) Vec3 {
     };
 }
 
-fn mag(a: Vec3) f64 {
+inline fn mag(a: Vec3) f64 {
     return @sqrt(dot(a, a));
 }
 
-fn normalize(a: Vec3) Vec3 {
+inline fn normalize(a: Vec3) Vec3 {
     return div(a, mag(a));
 }
 
-fn clamp(a: f64, comptime min: f64, comptime max: f64) f64 {
+inline fn clamp(a: f64, comptime min: f64, comptime max: f64) f64 {
     return if (a < min) min else if (a > max) max else a;
 }
 
 // geometry definitions
 
 const IntersectResult = struct {
-    dist: f64,
-    norm: Vec3,
+    d: f64, // distance
+    n: Vec3, // normal
+    c: Vec3, // color
+    e: Vec3, // emittance
 };
 
-const Sphere = struct {
+const Object = struct {
     c: Vec3, // center
     r: f64, // radius
+    refl: Vec3, // reflectance
+    emit: Vec3, // emittance
 
-    // Adapted from Inigo Quilez's ray-sphere intersection routine.
-    //   Note that this routine is only correct if ro is outside the sphere.
-    pub fn intersect(this: Sphere, ro: Vec3, rd: Vec3) ?IntersectResult {
+    pub inline fn intersect(this: Object, ro: Vec3, rd: Vec3) ?IntersectResult {
         const oc: Vec3 = sub(ro, this.c);
         const b: f64 = dot(oc, rd);
         const qc: Vec3 = sub(oc, mul(b, rd));
@@ -112,69 +114,68 @@ const Sphere = struct {
         if (t <= 0.0) // tad clunky, no?
             return null;
         const n: Vec3 = normalize(sub(add(ro, mul(rd, t)), this.c));
-        return IntersectResult{ .dist = t, .norm = n };
+        return IntersectResult{ .d = t, .n = n, .c = this.refl, .e = this.emit };
     }
-};
-
-const Object = struct {
-    geometry: Sphere,
-    albedo: Vec3,
-    emittance: Vec3,
-    // orientation(when?)
 };
 
 const BounceNode = struct {
     brdf: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-    cos_theta: f64 = 0.0,
-    p: f64 = 1.0,
-    emittance: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    emit: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    c_th: f64 = 0.0,
+    prob: f64 = 1.0,
 };
 
 // quality settings
 
 const max_bounces = 1 << 3;
-const num_samples = 1 << 5;
+const num_samples = 1 << 3;
 
 // scene definition
 
 const window_w: usize = 1920; // window width in pixels
 const window_h: usize = 1080; // window height in pixels
 
-const cp: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 }; // camera position
-const tp: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
-const up: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
+const camera_position: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 }; // camera position
+const target_position: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
+const up_vector: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f64 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.4, .z = 0.0 }, .r = 0.1 },
-        .albedo = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emittance = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
+        .c = Vec3{ .x = 1.0, .y = 0.4, .z = 0.0 },
+        .r = 0.1,
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 }, .r = 1000.0 },
-        .albedo = Vec3{ .x = 0.75, .y = 0.0, .z = 0.0 },
-        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
+        .r = 1000.0,
+        .refl = Vec3{ .x = 0.75, .y = 0.0, .z = 0.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 }, .r = 1000.0 },
-        .albedo = Vec3{ .x = 0.0, .y = 0.75, .z = 0.0 },
-        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
+        .r = 1000.0,
+        .refl = Vec3{ .x = 0.0, .y = 0.75, .z = 0.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 }, .r = 1000.0 },
-        .albedo = Vec3{ .x = 0.0, .y = 0.0, .z = 0.75 },
-        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
+        .r = 1000.0,
+        .refl = Vec3{ .x = 0.0, .y = 0.0, .z = 0.75 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 }, .r = 1000.0 },
-        .albedo = Vec3{ .x = 0.75, .y = 0.75, .z = 0.0 },
-        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
+        .r = 1000.0,
+        .refl = Vec3{ .x = 0.75, .y = 0.75, .z = 0.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
     Object{
-        .geometry = Sphere{ .c = Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 }, .r = 1000.0 },
-        .albedo = Vec3{ .x = 0.0, .y = 0.75, .z = 0.75 },
-        .emittance = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .c = Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
+        .r = 1000.0,
+        .refl = Vec3{ .x = 0.0, .y = 0.75, .z = 0.75 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     },
 };
 
@@ -185,6 +186,35 @@ const Pixel = struct {
     g: u8 = 0,
     b: u8 = 0,
 };
+
+fn intersectSceneNaive(ro: Vec3, rd: Vec3) ?IntersectResult {
+    var intersect = IntersectResult{
+        .d = std.math.floatMax(f64),
+        .n = undefined,
+        .c = undefined,
+        .e = undefined,
+    };
+    for (&scene) |*object| {
+        if (object.intersect(ro, rd)) |result| {
+            if (result.d < intersect.d) {
+                intersect = result;
+            }
+        }
+    }
+    return if (intersect.d == std.math.floatMax(f64)) null else intersect;
+}
+
+fn randomRayInHemisphere(n: Vec3, rng: *const std.Random) Vec3 {
+    const local_z: Vec3 = n;
+    const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
+    const local_x: Vec3 = normalize(cross(local_y, local_z));
+    const theta: f64 = rng.float(f64) * 2.0 * std.math.pi;
+    const u: f64 = rng.float(f64);
+    const x: f64 = @sqrt(1.0 - u * u) * @cos(theta);
+    const y: f64 = @sqrt(1.0 - u * u) * @sin(theta);
+    const z: f64 = u;
+    return normalize(add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)));
+}
 
 fn writeImage(frame_buffer: []const Pixel, file_name: []const u8) !void {
     const file: std.fs.File = try std.fs.cwd().createFile(file_name, .{});
@@ -217,8 +247,8 @@ pub fn main() !void {
     const window_h_flt: f64 = @floatFromInt(window_h);
     const window_w_flt: f64 = @floatFromInt(window_w);
 
-    const t: Vec3 = normalize(sub(tp, cp)); // target vector
-    const b: Vec3 = normalize(cross(t, up)); // horizontal vector
+    const t: Vec3 = normalize(sub(target_position, camera_position)); // target vector
+    const b: Vec3 = normalize(cross(t, up_vector)); // horizontal vector
     const v: Vec3 = normalize(cross(b, t)); // vertical vector
 
     const hw: f64 = @tan(0.5 * fov); // view port half width and height at distance 1
@@ -280,48 +310,24 @@ pub fn main() !void {
         while (sample_i < num_samples) : (sample_i += 1) {
             stack_i = 0;
             // build bounce stack
-            var ro: Vec3 = cp;
+            var ro: Vec3 = camera_position;
             var rd: Vec3 = initial_ray.*;
             while (stack_i < max_bounces) : (stack_i += 1) {
-                // find the nearest intersected object
-                var closest_dist: f64 = std.math.floatMax(f64);
-                var closest_norm: Vec3 = undefined;
-                var closest_obj: *const Object = undefined;
-                for (&scene) |*object| {
-                    if (object.geometry.intersect(ro, rd)) |result| {
-                        if (result.dist < closest_dist) {
-                            closest_dist = result.dist;
-                            closest_norm = result.norm;
-                            closest_obj = object;
-                        }
-                    }
-                }
-                // if no intersection, you're done
-                if (closest_dist == std.math.floatMax(f64)) {
+                if (intersectSceneNaive(ro, rd)) |intersect| {
+                    const new_ray: Vec3 = randomRayInHemisphere(intersect.n, &rng);
+
+                    bounce_stack[stack_i] = BounceNode{
+                        .brdf = mul(intersect.c, 1.0 / std.math.pi),
+                        .emit = intersect.e,
+                        .c_th = dot(new_ray, intersect.n),
+                        .prob = 1.0 / (2.0 * std.math.pi),
+                    };
+
+                    ro = add(ro, mul(rd, intersect.d));
+                    rd = new_ray;
+                } else {
                     break;
                 }
-                // choose outgoing ray (randomly chosen direction) (normalize)
-                const local_z: Vec3 = closest_norm;
-                const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
-                const local_x: Vec3 = normalize(cross(local_y, local_z));
-                const theta: f64 = rng.float(f64) * 2.0 * std.math.pi;
-                const u: f64 = rng.float(f64);
-                const x: f64 = @sqrt(1.0 - u * u) * @cos(theta);
-                const y: f64 = @sqrt(1.0 - u * u) * @sin(theta);
-                const z: f64 = u;
-                const new_ray: Vec3 = normalize(
-                    add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)),
-                );
-
-                bounce_stack[stack_i] = BounceNode{
-                    .brdf = mul(closest_obj.albedo, 1.0 / std.math.pi),
-                    .cos_theta = dot(new_ray, closest_norm),
-                    .p = 1.0 / (2.0 * std.math.pi),
-                    .emittance = closest_obj.emittance,
-                };
-
-                ro = add(ro, mul(rd, closest_dist));
-                rd = new_ray;
             }
             // accumulate incoming color by unwinding bounce stack
             var incoming: Vec3 = Vec3{}; // start black
@@ -329,8 +335,8 @@ pub fn main() !void {
                 stack_i -= 1;
                 const node: BounceNode = bounce_stack[stack_i];
                 incoming = add(
-                    node.emittance,
-                    mul(mul(mul(node.brdf, incoming), node.cos_theta), 1.0 / node.p),
+                    node.emit,
+                    mul(mul(mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
                 );
             }
             // average sample color into pixel color
