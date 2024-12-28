@@ -142,7 +142,7 @@ const BounceNode = struct {
 // quality settings
 
 const max_bounces = 1 << 3;
-const num_samples = 1 << 5;
+const num_samples = 1 << 13;
 
 // scene definition
 
@@ -156,7 +156,7 @@ const fov: f32 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .c = Vec3{ .x = 1.0, .y = 0.4, .z = 0.0 },
+        .c = Vec3{ .x = 1.0, .y = 0.3, .z = -0.3 },
         .r = 0.1,
         .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
@@ -266,6 +266,11 @@ fn writeImage(frame_buffer: []const Pixel, file_name: []const u8) !void {
 }
 
 pub fn main() !void {
+    var print_buff: [2048]u8 = undefined;
+    var print_segment: []u8 = undefined;
+    var last_print_time: u64 = 0;
+    var timer = try std.time.Timer.start();
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -276,6 +281,9 @@ pub fn main() !void {
     @memset(frame_buffer, Pixel{});
 
     // initialize rays
+
+    print_segment = try std.fmt.bufPrint(&print_buff, "  initializing rays...\n", .{});
+    _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
 
     const window_h_flt: f32 = @floatFromInt(window_h);
     const window_w_flt: f32 = @floatFromInt(window_w);
@@ -329,21 +337,27 @@ pub fn main() !void {
 
     // render diffuse reflection
 
-    const num_samples_flt: f32 = @floatFromInt(num_samples);
+    print_segment = try std.fmt.bufPrint(&print_buff, "  rendering...\n", .{});
+    _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
 
     var bounce_stack: [max_bounces]BounceNode = undefined;
     var stack_i: usize = undefined;
 
-    var print_buff: [512]u8 = undefined;
-
     for (rays, frame_buffer, 0..) |*initial_ray, *pixel, pixel_i| {
-        _ = try std.posix.write(std.posix.STDOUT_FILENO, "\x1b[1K\r"); // clear line, reset cursor
-        const print_segment = try std.fmt.bufPrint(
-            &print_buff,
-            "{:3}%",
-            .{@as(usize, @intFromFloat(@as(f32, @floatFromInt(pixel_i)) / @as(f32, @floatFromInt(frame_buffer.len)) * 100.0))},
-        );
-        _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+        const current_time = timer.read();
+        if ((current_time - last_print_time > 100000000) or (pixel_i == frame_buffer.len - 1)) {
+            last_print_time = current_time;
+            _ = try std.posix.write(std.posix.STDOUT_FILENO, "\x1b[1K\r"); // clear line, reset cursor
+            print_segment = try std.fmt.bufPrint(
+                &print_buff,
+                "   {d:5.1}% {d:.1}s",
+                .{
+                    @as(f32, @floatFromInt(pixel_i)) / @as(f32, @floatFromInt(frame_buffer.len)) * 100.0,
+                    @as(f32, @floatFromInt(current_time)) / 1.0e9,
+                },
+            );
+            _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+        }
 
         var sample_i: usize = 0;
         var pixel_color: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
@@ -380,7 +394,10 @@ pub fn main() !void {
                 );
             }
             // average sample color into pixel color
-            pixel_color = add(pixel_color, mul(incoming, 1.0 / num_samples_flt));
+            pixel_color = add(
+                pixel_color,
+                mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
+            );
         }
         // set final color value
         pixel_color.x = clamp(pixel_color.x, 0.0, 1.0);
@@ -390,7 +407,9 @@ pub fn main() !void {
         pixel.g = @intFromFloat(pixel_color.y * 255.0);
         pixel.b = @intFromFloat(pixel_color.z * 255.0);
     }
-    _ = try std.posix.write(std.posix.STDOUT_FILENO, "\n");
+
+    print_segment = try std.fmt.bufPrint(&print_buff, "\n  writing image...\n", .{});
+    _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
 
     try writeImage(frame_buffer, "image.ppm");
 }
