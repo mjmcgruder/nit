@@ -104,11 +104,14 @@ fn rand_float() f32 {
 
 // geometry definitions
 
+const Material = enum { diffuse, specular };
+
 const IntersectResult = struct {
     d: f32, // distance
     n: Vec3, // normal
     c: Vec3, // color
     e: Vec3, // emittance
+    m: Material,
 };
 
 const Object = struct {
@@ -116,6 +119,7 @@ const Object = struct {
     r: f32, // radius
     refl: Vec3, // reflectance
     emit: Vec3, // emittance
+    mtrl: Material, // material
 
     pub inline fn intersect(this: Object, ro: Vec3, rd: Vec3) ?IntersectResult {
         const oc: Vec3 = sub(ro, this.c);
@@ -128,7 +132,7 @@ const Object = struct {
         if (t <= 0.0) // tad clunky, no?
             return null;
         const n: Vec3 = normalize(sub(add(ro, mul(rd, t)), this.c));
-        return IntersectResult{ .d = t, .n = n, .c = this.refl, .e = this.emit };
+        return IntersectResult{ .d = t, .n = n, .c = this.refl, .e = this.emit, .m = this.mtrl };
     }
 };
 
@@ -142,7 +146,7 @@ const BounceNode = struct {
 // quality settings
 
 const max_bounces = 1 << 3;
-const num_samples = 1 << 13;
+const num_samples = 1 << 10;
 
 // scene definition
 
@@ -160,36 +164,49 @@ const scene = [_]Object{
         .r = 0.1,
         .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
+        .mtrl = Material.diffuse,
+    },
+    Object{
+        .c = Vec3{ .x = 1.3, .y = 0.0, .z = 0.0 },
+        .r = 0.1,
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.specular,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
         .r = 1000.0,
         .refl = Vec3{ .x = 0.75, .y = 0.0, .z = 0.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
         .r = 1000.0,
         .refl = Vec3{ .x = 0.0, .y = 0.75, .z = 0.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
         .r = 1000.0,
         .refl = Vec3{ .x = 0.0, .y = 0.0, .z = 0.75 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
         .r = 1000.0,
         .refl = Vec3{ .x = 0.75, .y = 0.75, .z = 0.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
         .r = 1000.0,
         .refl = Vec3{ .x = 0.0, .y = 0.75, .z = 0.75 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
     },
 };
 
@@ -207,6 +224,7 @@ fn intersectSceneNaive(ro: Vec3, rd: Vec3) ?IntersectResult {
         .n = undefined,
         .c = undefined,
         .e = undefined,
+        .m = undefined,
     };
     for (&scene) |*object| {
         if (object.intersect(ro, rd)) |result| {
@@ -345,6 +363,9 @@ pub fn main() !void {
 
     for (rays, frame_buffer, 0..) |*initial_ray, *pixel, pixel_i| {
         const current_time = timer.read();
+
+        // occasionally print a progress update
+
         if ((current_time - last_print_time > 100000000) or (pixel_i == frame_buffer.len - 1)) {
             last_print_time = current_time;
             _ = try std.posix.write(std.posix.STDOUT_FILENO, "\x1b[1K\r"); // clear line, reset cursor
@@ -359,30 +380,48 @@ pub fn main() !void {
             _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
         }
 
+        // render
+
         var sample_i: usize = 0;
         var pixel_color: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
         while (sample_i < num_samples) : (sample_i += 1) {
             stack_i = 0;
+
             // build bounce stack
             var ro: Vec3 = camera_position;
             var rd: Vec3 = initial_ray.*;
             while (stack_i < max_bounces) : (stack_i += 1) {
                 if (intersectSceneNaive(ro, rd)) |intersect| {
-                    const new_ray: Vec3 = randomRayInHemisphere(intersect.n);
-
-                    bounce_stack[stack_i] = BounceNode{
-                        .brdf = mul(intersect.c, 1.0 / std.math.pi),
-                        .emit = intersect.e,
-                        .c_th = dot(new_ray, intersect.n),
-                        .prob = 1.0 / (2.0 * std.math.pi),
-                    };
-
+                    var new_ray: Vec3 = undefined;
+                    switch (intersect.m) {
+                        Material.diffuse => {
+                            new_ray = randomRayInHemisphere(intersect.n);
+                            bounce_stack[stack_i] = BounceNode{
+                                .brdf = mul(intersect.c, 1.0 / std.math.pi),
+                                .emit = intersect.e,
+                                .c_th = dot(new_ray, intersect.n),
+                                .prob = 1.0 / (2.0 * std.math.pi),
+                            };
+                        },
+                        Material.specular => {
+                            const sd: Vec3 = mul(rd, -1.0); // source direction
+                            const np: Vec3 = mul(dot(intersect.n, sd), intersect.n); // normal projection
+                            new_ray = normalize(add(mul(sub(np, sd), 2.0), np));
+                            bounce_stack[stack_i] = BounceNode{
+                                .brdf = intersect.c,
+                                .emit = intersect.e,
+                                .c_th = dot(new_ray, intersect.n),
+                                .prob = 1.0,
+                            };
+                        },
+                    }
                     ro = add(ro, mul(rd, intersect.d));
                     rd = new_ray;
                 } else {
                     break;
                 }
             }
+
             // accumulate incoming color by unwinding bounce stack
             var incoming: Vec3 = Vec3{}; // start black
             while (stack_i > 0) {
@@ -393,13 +432,16 @@ pub fn main() !void {
                     mul(mul(mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
                 );
             }
+
             // average sample color into pixel color
             pixel_color = add(
                 pixel_color,
                 mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
             );
         }
+
         // set final color value
+
         pixel_color.x = clamp(pixel_color.x, 0.0, 1.0);
         pixel_color.y = clamp(pixel_color.y, 0.0, 1.0);
         pixel_color.z = clamp(pixel_color.z, 0.0, 1.0);
