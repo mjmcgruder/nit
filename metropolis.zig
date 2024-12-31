@@ -90,17 +90,20 @@ inline fn clamp(a: f32, comptime min: f32, comptime max: f32) f32 {
 
 // random number generation
 
-var rng_state: u32 = 42;
-fn rand_pcg() u32 {
-    const state: u32 = rng_state;
-    rng_state = rng_state *% 747796405 +% 2891336453;
-    const word: u32 = ((state >> (@as(u5, @intCast((state >> 28) + 4)))) ^ state) *% 277803737;
-    return (word >> 22) ^ word;
-}
+const PCG_rng = struct {
+    state: u32,
 
-fn rand_float() f32 {
-    return @as(f32, @floatFromInt(rand_pcg())) / @as(f32, @floatFromInt(std.math.maxInt(u32)));
-}
+    pub inline fn rand_u32(this: *PCG_rng) u32 {
+        const state: u32 = this.state;
+        this.state = this.state *% 747796405 +% 2891336453;
+        const word: u32 = ((state >> (@as(u5, @intCast((state >> 28) + 4)))) ^ state) *% 277803737;
+        return (word >> 22) ^ word;
+    }
+
+    pub inline fn rand_f32(this: *PCG_rng) f32 {
+        return @as(f32, @floatFromInt(this.rand_u32())) / @as(f32, @floatFromInt(std.math.maxInt(u32)));
+    }
+};
 
 // geometry definitions
 
@@ -145,8 +148,8 @@ const BounceNode = struct {
 
 // quality settings
 
-const max_bounces = 1 << 3;
-const num_samples = 1 << 10;
+const max_bounces: usize = 1 << 3;
+var num_samples: usize = 1 << 10;
 
 // scene definition
 
@@ -236,12 +239,12 @@ fn intersectSceneNaive(ro: Vec3, rd: Vec3) ?IntersectResult {
     return if (intersect.d == std.math.floatMax(f32)) null else intersect;
 }
 
-fn randomRayInHemisphere(n: Vec3) Vec3 {
+fn randomRayInHemisphere(n: Vec3, rng: *PCG_rng) Vec3 {
     const local_z: Vec3 = n;
     const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
     const local_x: Vec3 = normalize(cross(local_y, local_z));
-    const theta: f32 = rand_float() * 2.0 * std.math.pi;
-    const u: f32 = rand_float();
+    const theta: f32 = rng.rand_f32() * 2.0 * std.math.pi;
+    const u: f32 = rng.rand_f32();
     const r: f32 = @sqrt(1.0 - u * u);
     const x: f32 = r * @cos(theta);
     const y: f32 = r * @sin(theta);
@@ -249,13 +252,13 @@ fn randomRayInHemisphere(n: Vec3) Vec3 {
     return normalize(add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)));
 }
 
-fn randomRayInHemisphereMarsaglia(n: Vec3) Vec3 {
+fn randomRayInHemisphereMarsaglia(n: Vec3, rng: *PCG_rng) Vec3 {
     const local_z: Vec3 = n;
     const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
     const local_x: Vec3 = normalize(cross(local_y, local_z));
     while (true) {
-        const x1: f32 = rand_float() * 2.0 - 1.0;
-        const x2: f32 = rand_float() * 2.0 - 1.0;
+        const x1: f32 = rng.rand_f32() * 2.0 - 1.0;
+        const x2: f32 = rng.rand_f32() * 2.0 - 1.0;
         const xs: f32 = x1 * x1 + x2 * x2;
         if (xs >= 1.0) continue;
         const rt: f32 = @sqrt(1.0 - xs);
@@ -264,6 +267,149 @@ fn randomRayInHemisphereMarsaglia(n: Vec3) Vec3 {
         var z: f32 = 1.0 - 2.0 * xs;
         if (z < 0.0) z = -z;
         return normalize(add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)));
+    }
+}
+
+var timer: std.time.Timer = undefined;
+var last_print_time: u64 = undefined;
+var last_print_mutex: std.Thread.Mutex = std.Thread.Mutex{};
+
+const chunk_size: usize = 1 << 11;
+var chunk_start: usize = 0;
+var chunk_mutex: std.Thread.Mutex = std.Thread.Mutex{};
+
+var finished_pixels: usize = 0;
+var finished_pixels_mutex: std.Thread.Mutex = std.Thread.Mutex{};
+
+fn dispatchRender(
+    rays: []Vec3,
+    frame_buffer: []Pixel,
+    thread_num: usize,
+) !void {
+    var rng: PCG_rng = PCG_rng{ .state = @as(u32, @intCast(42 + thread_num)) };
+    while (chunk_start < frame_buffer.len) {
+        if (chunk_mutex.tryLock()) {
+            const chunk_end = @min(chunk_start + chunk_size, frame_buffer.len);
+            const chunk_start_current = chunk_start;
+            chunk_start = chunk_end;
+            chunk_mutex.unlock();
+            try renderPixelRange(rays, frame_buffer, &rng, chunk_start_current, chunk_end);
+            {
+                finished_pixels_mutex.lock();
+                defer finished_pixels_mutex.unlock();
+                finished_pixels += chunk_end - chunk_start_current;
+            }
+        }
+    }
+}
+
+fn renderPixelRange(
+    rays: []Vec3,
+    frame_buffer: []Pixel,
+    rng: *PCG_rng,
+    begin_i: usize,
+    end_i: usize,
+) !void {
+    var print_buff: [2048]u8 = undefined;
+    var print_segment: []u8 = undefined;
+
+    var bounce_stack: [max_bounces]BounceNode = undefined;
+    var stack_i: usize = undefined;
+
+    var pixel_i: usize = begin_i;
+    while (pixel_i < end_i) : (pixel_i += 1) {
+        const current_time = timer.read();
+
+        // occasionally print a progress update
+
+        if (current_time - last_print_time > 100000000) {
+            if (last_print_mutex.tryLock()) {
+                defer last_print_mutex.unlock();
+                last_print_time = current_time;
+                _ = try std.posix.write(std.posix.STDOUT_FILENO, "\x1b[1K\r"); // clear line, reset cursor
+                print_segment = try std.fmt.bufPrint(
+                    &print_buff,
+                    "   {d:5.1}% {d:.1}s",
+                    .{
+                        @as(f32, @floatFromInt(finished_pixels)) / @as(f32, @floatFromInt(frame_buffer.len)) * 100.0,
+                        @as(f32, @floatFromInt(current_time)) / 1.0e9,
+                    },
+                );
+                _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+            }
+        }
+
+        // render
+
+        const initial_ray: *Vec3 = &rays[pixel_i];
+        const pixel: *Pixel = &frame_buffer[pixel_i];
+
+        var sample_i: usize = 0;
+        var pixel_color: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+        while (sample_i < num_samples) : (sample_i += 1) {
+            stack_i = 0;
+
+            // build bounce stack
+            var ro: Vec3 = camera_position;
+            var rd: Vec3 = initial_ray.*;
+            while (stack_i < max_bounces) : (stack_i += 1) {
+                if (intersectSceneNaive(ro, rd)) |intersect| {
+                    var new_ray: Vec3 = undefined;
+                    switch (intersect.m) {
+                        Material.diffuse => {
+                            new_ray = randomRayInHemisphere(intersect.n, rng);
+                            bounce_stack[stack_i] = BounceNode{
+                                .brdf = mul(intersect.r, 1.0 / std.math.pi),
+                                .emit = intersect.e,
+                                .c_th = dot(new_ray, intersect.n),
+                                .prob = 1.0 / (2.0 * std.math.pi),
+                            };
+                        },
+                        Material.specular => {
+                            const sd: Vec3 = mul(rd, -1.0); // source direction
+                            const np: Vec3 = mul(dot(intersect.n, sd), intersect.n); // normal projection
+                            new_ray = normalize(add(mul(sub(np, sd), 2.0), np));
+                            bounce_stack[stack_i] = BounceNode{
+                                .brdf = intersect.r,
+                                .emit = intersect.e,
+                                .c_th = dot(new_ray, intersect.n),
+                                .prob = 1.0,
+                            };
+                        },
+                    }
+                    ro = add(ro, mul(rd, intersect.d));
+                    rd = new_ray;
+                } else {
+                    break;
+                }
+            }
+
+            // accumulate incoming color by unwinding bounce stack
+            var incoming: Vec3 = Vec3{}; // start black
+            while (stack_i > 0) {
+                stack_i -= 1;
+                const node: BounceNode = bounce_stack[stack_i];
+                incoming = add(
+                    node.emit,
+                    mul(mul(mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
+                );
+            }
+
+            // average sample color into pixel color
+            pixel_color = add(
+                pixel_color,
+                mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
+            );
+        }
+
+        // set final color value
+
+        pixel_color.x = clamp(pixel_color.x, 0.0, 1.0);
+        pixel_color.y = clamp(pixel_color.y, 0.0, 1.0);
+        pixel_color.z = clamp(pixel_color.z, 0.0, 1.0);
+        pixel.r = @intFromFloat(pixel_color.x * 255.0);
+        pixel.g = @intFromFloat(pixel_color.y * 255.0);
+        pixel.b = @intFromFloat(pixel_color.z * 255.0);
     }
 }
 
@@ -286,12 +432,28 @@ fn writeImage(frame_buffer: []const Pixel, file_name: []const u8) !void {
 pub fn main() !void {
     var print_buff: [2048]u8 = undefined;
     var print_segment: []u8 = undefined;
-    var last_print_time: u64 = 0;
-    var timer = try std.time.Timer.start();
+    timer = try std.time.Timer.start();
+    last_print_time = 0;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    if (args.len != 3) {
+        print_segment = try std.fmt.bufPrint(
+            &print_buff,
+            "  usage: metropolis <thread_count> <sample_exponent>\n",
+            .{},
+        );
+        _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+        return;
+    }
+
+    const thread_count = try std.fmt.parseInt(usize, args[1], 10);
+    num_samples = @as(usize, 1) << try std.fmt.parseInt(u6, args[2], 10);
 
     // initialize image
 
@@ -358,96 +520,12 @@ pub fn main() !void {
     print_segment = try std.fmt.bufPrint(&print_buff, "  rendering...\n", .{});
     _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
 
-    var bounce_stack: [max_bounces]BounceNode = undefined;
-    var stack_i: usize = undefined;
-
-    for (rays, frame_buffer, 0..) |*initial_ray, *pixel, pixel_i| {
-        const current_time = timer.read();
-
-        // occasionally print a progress update
-
-        if ((current_time - last_print_time > 100000000) or (pixel_i == frame_buffer.len - 1)) {
-            last_print_time = current_time;
-            _ = try std.posix.write(std.posix.STDOUT_FILENO, "\x1b[1K\r"); // clear line, reset cursor
-            print_segment = try std.fmt.bufPrint(
-                &print_buff,
-                "   {d:5.1}% {d:.1}s",
-                .{
-                    @as(f32, @floatFromInt(pixel_i)) / @as(f32, @floatFromInt(frame_buffer.len)) * 100.0,
-                    @as(f32, @floatFromInt(current_time)) / 1.0e9,
-                },
-            );
-            _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
-        }
-
-        // render
-
-        var sample_i: usize = 0;
-        var pixel_color: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
-        while (sample_i < num_samples) : (sample_i += 1) {
-            stack_i = 0;
-
-            // build bounce stack
-            var ro: Vec3 = camera_position;
-            var rd: Vec3 = initial_ray.*;
-            while (stack_i < max_bounces) : (stack_i += 1) {
-                if (intersectSceneNaive(ro, rd)) |intersect| {
-                    var new_ray: Vec3 = undefined;
-                    switch (intersect.m) {
-                        Material.diffuse => {
-                            new_ray = randomRayInHemisphere(intersect.n);
-                            bounce_stack[stack_i] = BounceNode{
-                                .brdf = mul(intersect.r, 1.0 / std.math.pi),
-                                .emit = intersect.e,
-                                .c_th = dot(new_ray, intersect.n),
-                                .prob = 1.0 / (2.0 * std.math.pi),
-                            };
-                        },
-                        Material.specular => {
-                            const sd: Vec3 = mul(rd, -1.0); // source direction
-                            const np: Vec3 = mul(dot(intersect.n, sd), intersect.n); // normal projection
-                            new_ray = normalize(add(mul(sub(np, sd), 2.0), np));
-                            bounce_stack[stack_i] = BounceNode{
-                                .brdf = intersect.r,
-                                .emit = intersect.e,
-                                .c_th = dot(new_ray, intersect.n),
-                                .prob = 1.0,
-                            };
-                        },
-                    }
-                    ro = add(ro, mul(rd, intersect.d));
-                    rd = new_ray;
-                } else {
-                    break;
-                }
-            }
-
-            // accumulate incoming color by unwinding bounce stack
-            var incoming: Vec3 = Vec3{}; // start black
-            while (stack_i > 0) {
-                stack_i -= 1;
-                const node: BounceNode = bounce_stack[stack_i];
-                incoming = add(
-                    node.emit,
-                    mul(mul(mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
-                );
-            }
-
-            // average sample color into pixel color
-            pixel_color = add(
-                pixel_color,
-                mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
-            );
-        }
-
-        // set final color value
-
-        pixel_color.x = clamp(pixel_color.x, 0.0, 1.0);
-        pixel_color.y = clamp(pixel_color.y, 0.0, 1.0);
-        pixel_color.z = clamp(pixel_color.z, 0.0, 1.0);
-        pixel.r = @intFromFloat(pixel_color.x * 255.0);
-        pixel.g = @intFromFloat(pixel_color.y * 255.0);
-        pixel.b = @intFromFloat(pixel_color.z * 255.0);
+    const pool = try allocator.alloc(std.Thread, thread_count);
+    for (pool, 0..) |*thread, thread_num| {
+        thread.* = try std.Thread.spawn(.{}, dispatchRender, .{ rays, frame_buffer, thread_num });
+    }
+    for (pool) |thread| {
+        thread.join();
     }
 
     print_segment = try std.fmt.bufPrint(&print_buff, "\n  writing image...\n", .{});
