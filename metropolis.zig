@@ -109,7 +109,7 @@ const Material = enum { diffuse, specular };
 const IntersectResult = struct {
     d: f32, // distance
     n: Vec3, // normal
-    c: Vec3, // color
+    r: Vec3, // reflectance
     e: Vec3, // emittance
     m: Material,
 };
@@ -132,7 +132,7 @@ const Object = struct {
         if (t <= 0.0) // tad clunky, no?
             return null;
         const n: Vec3 = normalize(sub(add(ro, mul(rd, t)), this.c));
-        return IntersectResult{ .d = t, .n = n, .c = this.refl, .e = this.emit, .m = this.mtrl };
+        return IntersectResult{ .d = t, .n = n, .r = this.refl, .e = this.emit, .m = this.mtrl };
     }
 };
 
@@ -153,7 +153,7 @@ const num_samples = 1 << 10;
 const window_w: usize = 1920; // window width in pixels
 const window_h: usize = 1080; // window height in pixels
 
-const camera_position: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 }; // camera position
+const camera_position: Vec3 = Vec3{ .x = 0.5, .y = 0.0, .z = 0.0 }; // camera position
 const target_position: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
 const up_vector: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f32 = 90.0; // horizontal field of view in degrees
@@ -167,8 +167,8 @@ const scene = [_]Object{
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.3, .y = 0.0, .z = 0.0 },
-        .r = 0.1,
+        .c = Vec3{ .x = 1.2, .y = -0.1, .z = 0.2 },
+        .r = 0.2,
         .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.specular,
@@ -222,7 +222,7 @@ fn intersectSceneNaive(ro: Vec3, rd: Vec3) ?IntersectResult {
     var intersect = IntersectResult{
         .d = std.math.floatMax(f32),
         .n = undefined,
-        .c = undefined,
+        .r = undefined,
         .e = undefined,
         .m = undefined,
     };
@@ -397,7 +397,7 @@ pub fn main() !void {
                         Material.diffuse => {
                             new_ray = randomRayInHemisphere(intersect.n);
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = mul(intersect.c, 1.0 / std.math.pi),
+                                .brdf = mul(intersect.r, 1.0 / std.math.pi),
                                 .emit = intersect.e,
                                 .c_th = dot(new_ray, intersect.n),
                                 .prob = 1.0 / (2.0 * std.math.pi),
@@ -408,7 +408,7 @@ pub fn main() !void {
                             const np: Vec3 = mul(dot(intersect.n, sd), intersect.n); // normal projection
                             new_ray = normalize(add(mul(sub(np, sd), 2.0), np));
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = intersect.c,
+                                .brdf = intersect.r,
                                 .emit = intersect.e,
                                 .c_th = dot(new_ray, intersect.n),
                                 .prob = 1.0,
