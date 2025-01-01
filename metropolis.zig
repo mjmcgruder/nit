@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const stdout = std.io.getStdOut().writer();
+const stderr = std.io.getStdErr().writer();
+
 // math library
 
 const Vec3 = struct {
@@ -157,13 +160,13 @@ const window_w: usize = 1920; // window width in pixels
 const window_h: usize = 1080; // window height in pixels
 
 const camera_position: Vec3 = Vec3{ .x = 0.5, .y = 0.0, .z = 0.0 }; // camera position
-const target_position: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 }; // target position
+const target_position: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = -2.0 }; // target position
 const up_vector: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f32 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .c = Vec3{ .x = 1.0, .y = 0.3, .z = -0.3 },
+        .c = Vec3{ .x = 1.0, .y = 0.3, .z = -0.15 },
         .r = 0.1,
         .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
@@ -177,37 +180,44 @@ const scene = [_]Object{
         .mtrl = Material.specular,
     },
     Object{
+        .c = Vec3{ .x = 0.9, .y = -0.2, .z = -0.3 },
+        .r = 0.15,
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.specular,
+    },
+    Object{
         .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.75, .y = 0.0, .z = 0.0 },
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = Material.specular,
     },
     Object{
         .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.0, .y = 0.75, .z = 0.0 },
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = Material.specular,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.0, .y = 0.0, .z = 0.75 },
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = Material.specular,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.75, .y = 0.75, .z = 0.0 },
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.0, .y = 0.75, .z = 0.75 },
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
@@ -281,6 +291,21 @@ var chunk_mutex: std.Thread.Mutex = std.Thread.Mutex{};
 var finished_pixels: usize = 0;
 var finished_pixels_mutex: std.Thread.Mutex = std.Thread.Mutex{};
 
+fn printRenderProgress(current_time: u64, total_pixels: u64) !void {
+    if (last_print_mutex.tryLock()) {
+        defer last_print_mutex.unlock();
+        last_print_time = current_time;
+        try stdout.print("\x1b[1K\r", .{});
+        try stdout.print(
+            "   {d:5.1}% {d:.1}s",
+            .{
+                @as(f32, @floatFromInt(finished_pixels)) / @as(f32, @floatFromInt(total_pixels)) * 100.0,
+                @as(f32, @floatFromInt(current_time)) / 1.0e9,
+            },
+        );
+    }
+}
+
 fn dispatchRender(
     rays: []Vec3,
     frame_buffer: []Pixel,
@@ -310,33 +335,17 @@ fn renderPixelRange(
     begin_i: usize,
     end_i: usize,
 ) !void {
-    var print_buff: [2048]u8 = undefined;
-    var print_segment: []u8 = undefined;
-
     var bounce_stack: [max_bounces]BounceNode = undefined;
     var stack_i: usize = undefined;
 
     var pixel_i: usize = begin_i;
     while (pixel_i < end_i) : (pixel_i += 1) {
-        const current_time = timer.read();
 
         // occasionally print a progress update
 
+        const current_time = timer.read();
         if (current_time - last_print_time > 100000000) {
-            if (last_print_mutex.tryLock()) {
-                defer last_print_mutex.unlock();
-                last_print_time = current_time;
-                _ = try std.posix.write(std.posix.STDOUT_FILENO, "\x1b[1K\r"); // clear line, reset cursor
-                print_segment = try std.fmt.bufPrint(
-                    &print_buff,
-                    "   {d:5.1}% {d:.1}s",
-                    .{
-                        @as(f32, @floatFromInt(finished_pixels)) / @as(f32, @floatFromInt(frame_buffer.len)) * 100.0,
-                        @as(f32, @floatFromInt(current_time)) / 1.0e9,
-                    },
-                );
-                _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
-            }
+            try printRenderProgress(current_time, frame_buffer.len);
         }
 
         // render
@@ -430,25 +439,18 @@ fn writeImage(frame_buffer: []const Pixel, file_name: []const u8) !void {
 }
 
 pub fn main() !void {
-    var print_buff: [2048]u8 = undefined;
-    var print_segment: []u8 = undefined;
     timer = try std.time.Timer.start();
     last_print_time = 0;
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var arena_allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try std.process.argsAlloc(arena);
+    defer std.process.argsFree(arena, args); // does this still need a free with an arena?
 
     if (args.len != 3) {
-        print_segment = try std.fmt.bufPrint(
-            &print_buff,
-            "  usage: metropolis <thread_count> <sample_exponent>\n",
-            .{},
-        );
-        _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+        try stdout.print("  usage: metropolis <thread_count> <sample_exponent>\n", .{});
         return;
     }
 
@@ -457,13 +459,12 @@ pub fn main() !void {
 
     // initialize image
 
-    const frame_buffer: []Pixel = try allocator.alloc(Pixel, window_w * window_h);
+    const frame_buffer: []Pixel = try arena.alloc(Pixel, window_w * window_h);
     @memset(frame_buffer, Pixel{});
 
     // initialize rays
 
-    print_segment = try std.fmt.bufPrint(&print_buff, "  initializing rays...\n", .{});
-    _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+    try stdout.print("  initializing rays...\n", .{});
 
     const window_h_flt: f32 = @floatFromInt(window_h);
     const window_w_flt: f32 = @floatFromInt(window_w);
@@ -479,7 +480,7 @@ pub fn main() !void {
     const inc_w: f32 = (2.0 * hw) / (window_w_flt - 1.0);
     const inc_h: f32 = (2.0 * hh) / (window_h_flt - 1.0);
 
-    const rays: []Vec3 = try allocator.alloc(Vec3, window_w * window_h);
+    const rays: []Vec3 = try arena.alloc(Vec3, window_w * window_h);
     for (rays, 0..) |*item, i| {
         const r: usize = i / window_w;
         const c: usize = i - (window_w * r);
@@ -517,19 +518,18 @@ pub fn main() !void {
 
     // render diffuse reflection
 
-    print_segment = try std.fmt.bufPrint(&print_buff, "  rendering...\n", .{});
-    _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+    try stdout.print("  rendering...\n", .{});
 
-    const pool = try allocator.alloc(std.Thread, thread_count);
+    const pool = try arena.alloc(std.Thread, thread_count);
     for (pool, 0..) |*thread, thread_num| {
         thread.* = try std.Thread.spawn(.{}, dispatchRender, .{ rays, frame_buffer, thread_num });
     }
     for (pool) |thread| {
         thread.join();
     }
+    try printRenderProgress(timer.read(), frame_buffer.len); // ensure 100% update is printed
 
-    print_segment = try std.fmt.bufPrint(&print_buff, "\n  writing image...\n", .{});
-    _ = try std.posix.write(std.posix.STDOUT_FILENO, print_segment);
+    try stdout.print("\n  writing image...\n", .{});
 
     try writeImage(frame_buffer, "image.ppm");
 }
