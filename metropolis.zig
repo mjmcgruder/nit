@@ -159,14 +159,14 @@ var num_samples: usize = 1 << 10;
 const window_w: usize = 1920; // window width in pixels
 const window_h: usize = 1080; // window height in pixels
 
-const camera_position: Vec3 = Vec3{ .x = 0.5, .y = 0.0, .z = 0.0 }; // camera position
-const target_position: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = -2.0 }; // target position
+const camera_position: Vec3 = Vec3{ .x = 1.2, .y = -0.1, .z = -0.4 }; // camera position
+const target_position: Vec3 = Vec3{ .x = 1.2, .y = -0.1, .z = 0.5 }; // target position
 const up_vector: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f32 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .c = Vec3{ .x = 1.0, .y = 0.3, .z = -0.15 },
+        .c = Vec3{ .x = 0.6, .y = 0.4, .z = 0.0 },
         .r = 0.1,
         .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
@@ -180,32 +180,67 @@ const scene = [_]Object{
         .mtrl = Material.specular,
     },
     Object{
-        .c = Vec3{ .x = 0.9, .y = -0.2, .z = -0.3 },
-        .r = 0.15,
+        .c = Vec3{ .x = 1.4, .y = -0.4, .z = -0.4 },
+        .r = 0.1,
         .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.specular,
+    },
+    Object{
+        .c = Vec3{ .x = 1.0, .y = -0.4, .z = 0.4 },
+        .r = 0.1,
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.specular,
+    },
+    Object{
+        .c = Vec3{ .x = 0.5, .y = -0.4, .z = 0.4 },
+        .r = 0.1,
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.specular,
+    },
+    Object{
+        .c = Vec3{ .x = 1.3, .y = 0.4, .z = 0.4 },
+        .r = 0.08,
+        .refl = Vec3{ .x = 1.0, .y = 0.8, .z = 0.1 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
+    },
+    Object{
+        .c = Vec3{ .x = 1.4, .y = -0.42, .z = 0.1 },
+        .r = 0.08,
+        .refl = Vec3{ .x = 0.05, .y = 0.9, .z = 0.9 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
+    },
+    Object{
+        .c = Vec3{ .x = 1.0, .y = -0.38, .z = 0.1 },
+        .r = 0.12,
+        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .refl = Vec3{ .x = 0.8, .y = 0.2, .z = 0.2 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .refl = Vec3{ .x = 0.8, .y = 0.0, .z = 0.8 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .refl = Vec3{ .x = 0.2, .y = 0.2, .z = 0.8 },
         .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = Material.diffuse,
     },
     Object{
         .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
@@ -375,11 +410,11 @@ fn renderPixelRange(
                             };
                         },
                         Material.specular => {
-                            const sd: Vec3 = mul(rd, -1.0); // source direction
-                            const np: Vec3 = mul(dot(intersect.n, sd), intersect.n); // normal projection
-                            new_ray = normalize(add(mul(sub(np, sd), 2.0), np));
+                            const wo: Vec3 = mul(rd, -1.0); // source light direction
+                            new_ray = normalize(sub(mul(2.0, mul(dot(intersect.n, wo), intersect.n)), wo));
+                            const inv_cos_thetar = 1.0 / dot(new_ray, intersect.n);
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = intersect.r,
+                                .brdf = mul(intersect.r, inv_cos_thetar),
                                 .emit = intersect.e,
                                 .c_th = dot(new_ray, intersect.n),
                                 .prob = 1.0,
