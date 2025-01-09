@@ -1,95 +1,8 @@
 const std = @import("std");
+const mth = @import("src/math.zig");
 
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
-
-// math library
-
-const Vec3 = struct {
-    x: f32 = 0.0,
-    y: f32 = 0.0,
-    z: f32 = 0.0,
-};
-
-const unit_x: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 };
-const unit_y: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
-const unit_z: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
-
-inline fn broadcast(a: anytype) Vec3 {
-    if (@TypeOf(a) == Vec3) {
-        return a;
-    } else if (@TypeOf(a) == comptime_float) {
-        return Vec3{ .x = a, .y = a, .z = a };
-    } else if (@TypeOf(a) == f32) {
-        return Vec3{ .x = a, .y = a, .z = a };
-    } else {
-        comptime unreachable;
-    }
-}
-
-inline fn add(a_in: anytype, b_in: anytype) Vec3 {
-    const a: Vec3 = broadcast(a_in);
-    const b: Vec3 = broadcast(b_in);
-    return Vec3{
-        .x = a.x + b.x,
-        .y = a.y + b.y,
-        .z = a.z + b.z,
-    };
-}
-
-inline fn sub(a_in: anytype, b_in: anytype) Vec3 {
-    const a: Vec3 = broadcast(a_in);
-    const b: Vec3 = broadcast(b_in);
-    return Vec3{
-        .x = a.x - b.x,
-        .y = a.y - b.y,
-        .z = a.z - b.z,
-    };
-}
-
-inline fn mul(a_in: anytype, b_in: anytype) Vec3 {
-    const a: Vec3 = broadcast(a_in);
-    const b: Vec3 = broadcast(b_in);
-    return Vec3{
-        .x = a.x * b.x,
-        .y = a.y * b.y,
-        .z = a.z * b.z,
-    };
-}
-
-inline fn div(a_in: anytype, b_in: anytype) Vec3 {
-    const a: Vec3 = broadcast(a_in);
-    const b: Vec3 = broadcast(b_in);
-    return Vec3{
-        .x = a.x / b.x,
-        .y = a.y / b.y,
-        .z = a.z / b.z,
-    };
-}
-
-inline fn dot(a: Vec3, b: Vec3) f32 {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-inline fn cross(a: Vec3, b: Vec3) Vec3 {
-    return Vec3{
-        .x = a.y * b.z - a.z * b.y,
-        .y = a.z * b.x - a.x * b.z,
-        .z = a.x * b.y - a.y * b.x,
-    };
-}
-
-inline fn mag(a: Vec3) f32 {
-    return @sqrt(dot(a, a));
-}
-
-inline fn normalize(a: Vec3) Vec3 {
-    return div(a, mag(a));
-}
-
-inline fn clamp(a: f32, comptime min: f32, comptime max: f32) f32 {
-    return if (a < min) min else if (a > max) max else a;
-}
 
 // random number generation
 
@@ -114,37 +27,37 @@ const Material = enum { diffuse, specular };
 
 const IntersectResult = struct {
     d: f32, // distance
-    n: Vec3, // normal
-    r: Vec3, // reflectance
-    e: Vec3, // emittance
+    n: mth.Vec3, // normal
+    r: mth.Vec3, // reflectance
+    e: mth.Vec3, // emittance
     m: Material,
 };
 
 const Object = struct {
-    c: Vec3, // center
+    c: mth.Vec3, // center
     r: f32, // radius
-    refl: Vec3, // reflectance
-    emit: Vec3, // emittance
+    refl: mth.Vec3, // reflectance
+    emit: mth.Vec3, // emittance
     mtrl: Material, // material
 
-    pub inline fn intersect(this: Object, ro: Vec3, rd: Vec3) ?IntersectResult {
-        const oc: Vec3 = sub(ro, this.c);
-        const b: f32 = dot(oc, rd);
-        const qc: Vec3 = sub(oc, mul(b, rd));
-        const h: f32 = this.r * this.r - dot(qc, qc);
+    pub inline fn intersect(this: Object, ro: mth.Vec3, rd: mth.Vec3) ?IntersectResult {
+        const oc: mth.Vec3 = mth.sub(ro, this.c);
+        const b: f32 = mth.dot(oc, rd);
+        const qc: mth.Vec3 = mth.sub(oc, mth.mul(b, rd));
+        const h: f32 = this.r * this.r - mth.dot(qc, qc);
         if (h < 0.0)
             return null;
         const t: f32 = -b - @sqrt(h);
         if (t <= 0.0) // tad clunky, no?
             return null;
-        const n: Vec3 = normalize(sub(add(ro, mul(rd, t)), this.c));
+        const n: mth.Vec3 = mth.normalize(mth.sub(mth.add(ro, mth.mul(rd, t)), this.c));
         return IntersectResult{ .d = t, .n = n, .r = this.refl, .e = this.emit, .m = this.mtrl };
     }
 };
 
 const BounceNode = struct {
-    brdf: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-    emit: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    brdf: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    emit: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     c_th: f32 = 0.0,
     prob: f32 = 1.0,
 };
@@ -159,101 +72,101 @@ var num_samples: usize = 1 << 10;
 const window_w: usize = 1920; // window width in pixels
 const window_h: usize = 1080; // window height in pixels
 
-const camera_position: Vec3 = Vec3{ .x = 1.2, .y = -0.1, .z = -0.4 }; // camera position
-const target_position: Vec3 = Vec3{ .x = 1.2, .y = -0.1, .z = 0.5 }; // target position
-const up_vector: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
+const camera_position: mth.Vec3 = mth.Vec3{ .x = 1.2, .y = -0.1, .z = -0.4 }; // camera position
+const target_position: mth.Vec3 = mth.Vec3{ .x = 1.2, .y = -0.1, .z = 0.5 }; // target position
+const up_vector: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f32 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .c = Vec3{ .x = 0.6, .y = 0.4, .z = 0.0 },
+        .c = mth.Vec3{ .x = 0.6, .y = 0.4, .z = 0.0 },
         .r = 0.1,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.2, .y = -0.1, .z = 0.2 },
+        .c = mth.Vec3{ .x = 1.2, .y = -0.1, .z = 0.2 },
         .r = 0.2,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.specular,
     },
     Object{
-        .c = Vec3{ .x = 1.4, .y = -0.4, .z = -0.4 },
+        .c = mth.Vec3{ .x = 1.4, .y = -0.4, .z = -0.4 },
         .r = 0.1,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.specular,
     },
     Object{
-        .c = Vec3{ .x = 1.0, .y = -0.4, .z = 0.4 },
+        .c = mth.Vec3{ .x = 1.0, .y = -0.4, .z = 0.4 },
         .r = 0.1,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.specular,
     },
     Object{
-        .c = Vec3{ .x = 0.5, .y = -0.4, .z = 0.4 },
+        .c = mth.Vec3{ .x = 0.5, .y = -0.4, .z = 0.4 },
         .r = 0.1,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.specular,
     },
     Object{
-        .c = Vec3{ .x = 1.3, .y = 0.4, .z = 0.4 },
+        .c = mth.Vec3{ .x = 1.3, .y = 0.4, .z = 0.4 },
         .r = 0.08,
-        .refl = Vec3{ .x = 1.0, .y = 0.8, .z = 0.1 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 0.8, .z = 0.1 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.4, .y = -0.42, .z = 0.1 },
+        .c = mth.Vec3{ .x = 1.4, .y = -0.42, .z = 0.1 },
         .r = 0.08,
-        .refl = Vec3{ .x = 0.05, .y = 0.9, .z = 0.9 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 0.05, .y = 0.9, .z = 0.9 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.0, .y = -0.38, .z = 0.1 },
+        .c = mth.Vec3{ .x = 1.0, .y = -0.38, .z = 0.1 },
         .r = 0.12,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
+        .c = mth.Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.8, .y = 0.2, .z = 0.2 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 0.8, .y = 0.2, .z = 0.2 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
+        .c = mth.Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.8, .y = 0.0, .z = 0.8 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 0.8, .y = 0.0, .z = 0.8 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
+        .c = mth.Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 0.2, .y = 0.2, .z = 0.8 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 0.2, .y = 0.2, .z = 0.8 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
+        .c = mth.Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
     Object{
-        .c = Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
+        .c = mth.Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
         .r = 1000.0,
-        .refl = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
         .mtrl = Material.diffuse,
     },
 };
@@ -266,7 +179,7 @@ const Pixel = struct {
     b: u8 = 0,
 };
 
-fn intersectSceneNaive(ro: Vec3, rd: Vec3) ?IntersectResult {
+fn intersectSceneNaive(ro: mth.Vec3, rd: mth.Vec3) ?IntersectResult {
     var intersect = IntersectResult{
         .d = std.math.floatMax(f32),
         .n = undefined,
@@ -284,23 +197,29 @@ fn intersectSceneNaive(ro: Vec3, rd: Vec3) ?IntersectResult {
     return if (intersect.d == std.math.floatMax(f32)) null else intersect;
 }
 
-fn randomRayInHemisphere(n: Vec3, rng: *PCG_rng) Vec3 {
-    const local_z: Vec3 = n;
-    const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
-    const local_x: Vec3 = normalize(cross(local_y, local_z));
+fn randomRayInHemisphere(n: mth.Vec3, rng: *PCG_rng) mth.Vec3 {
+    const local_z: mth.Vec3 = n;
+    const local_y: mth.Vec3 = mth.normalize(
+        mth.cross(local_z, if (@abs(local_z.x) < 0.9) mth.unit_x else mth.unit_y),
+    );
+    const local_x: mth.Vec3 = mth.normalize(mth.cross(local_y, local_z));
     const theta: f32 = rng.rand_f32() * 2.0 * std.math.pi;
     const u: f32 = rng.rand_f32();
     const r: f32 = @sqrt(1.0 - u * u);
     const x: f32 = r * @cos(theta);
     const y: f32 = r * @sin(theta);
     const z: f32 = u;
-    return normalize(add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)));
+    return mth.normalize(
+        mth.add(mth.add(mth.mul(local_x, x), mth.mul(local_y, y)), mth.mul(local_z, z)),
+    );
 }
 
-fn randomRayInHemisphereMarsaglia(n: Vec3, rng: *PCG_rng) Vec3 {
-    const local_z: Vec3 = n;
-    const local_y: Vec3 = normalize(cross(local_z, if (@abs(local_z.x) < 0.9) unit_x else unit_y));
-    const local_x: Vec3 = normalize(cross(local_y, local_z));
+fn randomRayInHemisphereMarsaglia(n: mth.Vec3, rng: *PCG_rng) mth.Vec3 {
+    const local_z: mth.Vec3 = n;
+    const local_y: mth.Vec3 = mth.normalize(
+        mth.cross(local_z, if (@abs(local_z.x) < 0.9) mth.unit_x else mth.unit_y),
+    );
+    const local_x: mth.Vec3 = mth.normalize(mth.cross(local_y, local_z));
     while (true) {
         const x1: f32 = rng.rand_f32() * 2.0 - 1.0;
         const x2: f32 = rng.rand_f32() * 2.0 - 1.0;
@@ -311,7 +230,9 @@ fn randomRayInHemisphereMarsaglia(n: Vec3, rng: *PCG_rng) Vec3 {
         const y: f32 = 2.0 * x2 * rt;
         var z: f32 = 1.0 - 2.0 * xs;
         if (z < 0.0) z = -z;
-        return normalize(add(add(mul(local_x, x), mul(local_y, y)), mul(local_z, z)));
+        return mth.normalize(
+            mth.add(mth.add(mth.mul(local_x, x), mth.mul(local_y, y)), mth.mul(local_z, z)),
+        );
     }
 }
 
@@ -342,7 +263,7 @@ fn printRenderProgress(current_time: u64, total_pixels: u64) !void {
 }
 
 fn dispatchRender(
-    rays: []Vec3,
+    rays: []mth.Vec3,
     frame_buffer: []Pixel,
     thread_num: usize,
 ) !void {
@@ -364,7 +285,7 @@ fn dispatchRender(
 }
 
 fn renderPixelRange(
-    rays: []Vec3,
+    rays: []mth.Vec3,
     frame_buffer: []Pixel,
     rng: *PCG_rng,
     begin_i: usize,
@@ -385,43 +306,43 @@ fn renderPixelRange(
 
         // render
 
-        const initial_ray: *Vec3 = &rays[pixel_i];
+        const initial_ray: *mth.Vec3 = &rays[pixel_i];
         const pixel: *Pixel = &frame_buffer[pixel_i];
 
         var sample_i: usize = 0;
-        var pixel_color: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+        var pixel_color: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
         while (sample_i < num_samples) : (sample_i += 1) {
             stack_i = 0;
 
             // build bounce stack
-            var ro: Vec3 = camera_position;
-            var rd: Vec3 = initial_ray.*;
+            var ro: mth.Vec3 = camera_position;
+            var rd: mth.Vec3 = initial_ray.*;
             while (stack_i < max_bounces) : (stack_i += 1) {
                 if (intersectSceneNaive(ro, rd)) |intersect| {
-                    var new_ray: Vec3 = undefined;
+                    var new_ray: mth.Vec3 = undefined;
                     switch (intersect.m) {
                         Material.diffuse => {
                             new_ray = randomRayInHemisphere(intersect.n, rng);
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = mul(intersect.r, 1.0 / std.math.pi),
+                                .brdf = mth.mul(intersect.r, 1.0 / std.math.pi),
                                 .emit = intersect.e,
-                                .c_th = dot(new_ray, intersect.n),
+                                .c_th = mth.dot(new_ray, intersect.n),
                                 .prob = 1.0 / (2.0 * std.math.pi),
                             };
                         },
                         Material.specular => {
-                            const wo: Vec3 = mul(rd, -1.0); // source light direction
-                            new_ray = normalize(sub(mul(2.0, mul(dot(intersect.n, wo), intersect.n)), wo));
-                            const inv_cos_thetar = 1.0 / dot(new_ray, intersect.n);
+                            const wo: mth.Vec3 = mth.mul(rd, -1.0); // source light direction
+                            new_ray = mth.normalize(mth.sub(mth.mul(2.0, mth.mul(mth.dot(intersect.n, wo), intersect.n)), wo));
+                            const inv_cos_thetar = 1.0 / mth.dot(new_ray, intersect.n);
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = mul(intersect.r, inv_cos_thetar),
+                                .brdf = mth.mul(intersect.r, inv_cos_thetar),
                                 .emit = intersect.e,
-                                .c_th = dot(new_ray, intersect.n),
+                                .c_th = mth.dot(new_ray, intersect.n),
                                 .prob = 1.0,
                             };
                         },
                     }
-                    ro = add(ro, mul(rd, intersect.d));
+                    ro = mth.add(ro, mth.mul(rd, intersect.d));
                     rd = new_ray;
                 } else {
                     break;
@@ -429,28 +350,28 @@ fn renderPixelRange(
             }
 
             // accumulate incoming color by unwinding bounce stack
-            var incoming: Vec3 = Vec3{}; // start black
+            var incoming: mth.Vec3 = mth.Vec3{}; // start black
             while (stack_i > 0) {
                 stack_i -= 1;
                 const node: BounceNode = bounce_stack[stack_i];
-                incoming = add(
+                incoming = mth.add(
                     node.emit,
-                    mul(mul(mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
+                    mth.mul(mth.mul(mth.mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
                 );
             }
 
             // average sample color into pixel color
-            pixel_color = add(
+            pixel_color = mth.add(
                 pixel_color,
-                mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
+                mth.mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
             );
         }
 
         // set final color value
 
-        pixel_color.x = clamp(pixel_color.x, 0.0, 1.0);
-        pixel_color.y = clamp(pixel_color.y, 0.0, 1.0);
-        pixel_color.z = clamp(pixel_color.z, 0.0, 1.0);
+        pixel_color.x = mth.clamp(pixel_color.x, 0.0, 1.0);
+        pixel_color.y = mth.clamp(pixel_color.y, 0.0, 1.0);
+        pixel_color.z = mth.clamp(pixel_color.z, 0.0, 1.0);
         pixel.r = @intFromFloat(pixel_color.x * 255.0);
         pixel.g = @intFromFloat(pixel_color.y * 255.0);
         pixel.b = @intFromFloat(pixel_color.z * 255.0);
@@ -504,24 +425,26 @@ pub fn main() !void {
     const window_h_flt: f32 = @floatFromInt(window_h);
     const window_w_flt: f32 = @floatFromInt(window_w);
 
-    const t: Vec3 = normalize(sub(target_position, camera_position)); // target vector
-    const b: Vec3 = normalize(cross(t, up_vector)); // horizontal vector
-    const v: Vec3 = normalize(cross(b, t)); // vertical vector
+    const t: mth.Vec3 = mth.normalize(mth.sub(target_position, camera_position)); // target vector
+    const b: mth.Vec3 = mth.normalize(mth.cross(t, up_vector)); // horizontal vector
+    const v: mth.Vec3 = mth.normalize(mth.cross(b, t)); // vertical vector
 
     const hw: f32 = @tan(0.5 * fov); // view port half width and height at distance 1
     const hh: f32 = hw * ((window_h_flt - 1.0) / (window_w_flt - 1.0));
 
-    const ul: Vec3 = add(sub(t, mul(hw, b)), mul(hh, v)); // upper left point
+    const ul: mth.Vec3 = mth.add(mth.sub(t, mth.mul(hw, b)), mth.mul(hh, v)); // upper left point
     const inc_w: f32 = (2.0 * hw) / (window_w_flt - 1.0);
     const inc_h: f32 = (2.0 * hh) / (window_h_flt - 1.0);
 
-    const rays: []Vec3 = try arena.alloc(Vec3, window_w * window_h);
+    const rays: []mth.Vec3 = try arena.alloc(mth.Vec3, window_w * window_h);
     for (rays, 0..) |*item, i| {
         const r: usize = i / window_w;
         const c: usize = i - (window_w * r);
         const r_flt: f32 = @floatFromInt(r);
         const c_flt: f32 = @floatFromInt(c);
-        item.* = normalize(add(ul, add(mul(-inc_h * r_flt, v), mul(inc_w * c_flt, b))));
+        item.* = mth.normalize(
+            mth.add(ul, mth.add(mth.mul(-inc_h * r_flt, v), mth.mul(inc_w * c_flt, b))),
+        );
     }
 
     // render a depth map

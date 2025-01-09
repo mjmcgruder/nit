@@ -2,3 +2,4 @@
 
 !.gitignore
 !metropolis.zig
+!src
