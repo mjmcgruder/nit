@@ -9,15 +9,16 @@ pub const unit_y: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
 pub const unit_z: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
 
 pub inline fn broadcast(a: anytype) Vec3 {
-    if (@TypeOf(a) == Vec3) {
-        return a;
-    } else if (@TypeOf(a) == comptime_float) {
-        return Vec3{ .x = a, .y = a, .z = a };
-    } else if (@TypeOf(a) == f32) {
-        return Vec3{ .x = a, .y = a, .z = a };
-    } else {
-        comptime unreachable;
+    var result: Vec3 = undefined;
+    inline for (@typeInfo(Vec3).Struct.fields) |field| {
+        @field(result, field.name) = switch (@TypeOf(a)) {
+            Vec3 => @field(a, field.name),
+            comptime_float => a,
+            f32 => a,
+            else => comptime unreachable,
+        };
     }
+    return result;
 }
 
 pub inline fn add(a_in: anytype, b_in: anytype) Vec3 {
