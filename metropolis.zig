@@ -79,7 +79,7 @@ const fov: f32 = 90.0; // horizontal field of view in degrees
 
 const scene = [_]Object{
     Object{
-        .c = mth.Vec3{ .x = 0.6, .y = 0.4, .z = 0.0 },
+        .c = mth.Vec3{ .x = 0.3, .y = -0.4, .z = 0.0 },
         .r = 0.1,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
