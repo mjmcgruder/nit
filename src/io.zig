@@ -6,7 +6,7 @@ const ParsingError = error{
     DelimiterNotFound,
     KeyNotFound,
     UnknownBlock,
-    UnknownMaterial,
+    UnknownEnum,
 };
 
 const Settings = struct {
@@ -18,54 +18,44 @@ const Settings = struct {
     target_position: mth.Vec3 = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
 };
 
-fn setSetting(key: []u8, val: []u8, settings: *Settings) !void {
-    if (std.mem.eql(u8, key, "max_bounces")) {
-        settings.max_bounces = try std.fmt.parseInt(usize, val, 10);
-    } else if (std.mem.eql(u8, key, "num_samples")) {
-        settings.num_samples = try std.fmt.parseInt(usize, val, 10);
-    } else if (std.mem.eql(u8, key, "window_w")) {
-        settings.window_w = try std.fmt.parseInt(usize, val, 10);
-    } else if (std.mem.eql(u8, key, "window_h")) {
-        settings.window_h = try std.fmt.parseInt(usize, val, 10);
-    } else if (std.mem.eql(u8, key, "camera_position")) {
-        settings.camera_position = try parseVector(val);
-    } else if (std.mem.eql(u8, key, "target_position")) {
-        settings.target_position = try parseVector(val);
-    } else {
-        return ParsingError.KeyNotFound;
-    }
+fn parseType(result_type: type, string: []u8) !result_type {
+    return switch (result_type) {
+        usize => try std.fmt.parseInt(usize, string, 10),
+        f32 => try std.fmt.parseFloat(f32, string),
+        mth.Vec3 => try parseVector(string),
+        geom.Material => try parseEnum(geom.Material, string),
+        else => comptime unreachable,
+    };
 }
 
-fn setSphereSetting(key: []u8, val: []u8, obj: *geom.Object) !void {
-    if (std.mem.eql(u8, key, "c")) {
-        obj.c = try parseVector(val);
-    } else if (std.mem.eql(u8, key, "r")) {
-        obj.r = try std.fmt.parseFloat(f32, val);
-    } else if (std.mem.eql(u8, key, "refl")) {
-        obj.refl = try parseVector(val);
-    } else if (std.mem.eql(u8, key, "emit")) {
-        obj.emit = try parseVector(val);
-    } else if (std.mem.eql(u8, key, "mtrl")) {
-        if (std.mem.eql(u8, val, "diffuse")) {
-            obj.mtrl = geom.Material.diffuse;
-        } else if (std.mem.eql(u8, val, "specular")) {
-            obj.mtrl = geom.Material.specular;
-        } else {
-            return ParsingError.UnknownMaterial;
+fn parseEnum(enum_type: type, string: []u8) !enum_type {
+    inline for (@typeInfo(enum_type).Enum.fields) |field| {
+        if (std.mem.eql(u8, string, field.name)) {
+            return @field(enum_type, field.name);
         }
-    } else {
-        return ParsingError.KeyNotFound;
     }
+    return ParsingError.UnknownEnum;
 }
 
-fn parseVector(str: []u8) !mth.Vec3 {
-    const split0: [2][]u8 = try splitAtDelimiter(str, ',');
+fn parseVector(string: []u8) !mth.Vec3 {
+    const split0: [2][]u8 = try splitAtDelimiter(string, ',');
     const split1: [2][]u8 = try splitAtDelimiter(split0[1], ',');
     return mth.Vec3{
         .x = try std.fmt.parseFloat(f32, split0[0]),
         .y = try std.fmt.parseFloat(f32, split1[0]),
         .z = try std.fmt.parseFloat(f32, split1[1]),
     };
+}
+
+fn setSetting(key: []u8, val: []u8, settings: anytype) !@TypeOf(settings) {
+    var new_settings = settings;
+    inline for (@typeInfo(@TypeOf(settings)).Struct.fields) |field| {
+        if (std.mem.eql(u8, key, field.name)) {
+            @field(new_settings, field.name) = try parseType(field.type, val);
+            return new_settings;
+        }
+    }
+    return ParsingError.KeyNotFound;
 }
 
 fn trimWhitespace(str: []u8) []u8 {
@@ -143,10 +133,11 @@ pub fn readInput(
         // assign settings
         switch (mode) {
             ParseMode.Normal => {
-                try setSetting(key, val, settings);
+                settings.* = try setSetting(key, val, settings.*);
             },
             ParseMode.Sphere => {
-                try setSphereSetting(key, val, &scene.items[scene.items.len - 1]);
+                const last_object: *geom.Object = &scene.items[scene.items.len - 1];
+                last_object.* = try setSetting(key, val, last_object.*);
             },
         }
     }
