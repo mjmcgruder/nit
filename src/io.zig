@@ -1,9 +1,12 @@
 const std = @import("std");
 const mth = @import("math.zig");
+const geom = @import("geometry.zig");
 
 const ParsingError = error{
     DelimiterNotFound,
     KeyNotFound,
+    UnknownBlock,
+    UnknownMaterial,
 };
 
 const Settings = struct {
@@ -28,6 +31,28 @@ fn setSetting(key: []u8, val: []u8, settings: *Settings) !void {
         settings.camera_position = try parseVector(val);
     } else if (std.mem.eql(u8, key, "target_position")) {
         settings.target_position = try parseVector(val);
+    } else {
+        return ParsingError.KeyNotFound;
+    }
+}
+
+fn setSphereSetting(key: []u8, val: []u8, obj: *geom.Object) !void {
+    if (std.mem.eql(u8, key, "c")) {
+        obj.c = try parseVector(val);
+    } else if (std.mem.eql(u8, key, "r")) {
+        obj.r = try std.fmt.parseFloat(f32, val);
+    } else if (std.mem.eql(u8, key, "refl")) {
+        obj.refl = try parseVector(val);
+    } else if (std.mem.eql(u8, key, "emit")) {
+        obj.emit = try parseVector(val);
+    } else if (std.mem.eql(u8, key, "mtrl")) {
+        if (std.mem.eql(u8, val, "diffuse")) {
+            obj.mtrl = geom.Material.diffuse;
+        } else if (std.mem.eql(u8, val, "specular")) {
+            obj.mtrl = geom.Material.specular;
+        } else {
+            return ParsingError.UnknownMaterial;
+        }
     } else {
         return ParsingError.KeyNotFound;
     }
@@ -66,8 +91,17 @@ fn splitAtDelimiter(str: []u8, delim: u8) ParsingError![2][]u8 {
     return if (delimiter_found) output else ParsingError.DelimiterNotFound;
 }
 
-pub fn readInput(file_name: []const u8) !Settings {
-    var settings: Settings = Settings{};
+const ParseMode = enum {
+    Normal,
+    Sphere,
+};
+
+pub fn readInput(
+    file_name: []const u8,
+    settings: *Settings,
+    scene: *std.ArrayList(geom.Object),
+) !void {
+    var mode: ParseMode = ParseMode.Normal;
 
     const cwd: std.fs.Dir = std.fs.cwd();
     const fID: std.fs.File = try cwd.openFile(file_name, .{});
@@ -76,29 +110,72 @@ pub fn readInput(file_name: []const u8) !Settings {
     var read_buffer: [1 << 10]u8 = undefined;
     while (try fID.reader().readUntilDelimiterOrEof(&read_buffer, '\n')) |line| {
         // trim comments and extra white space
-        const parse: []u8 = trimWhitespace(
+        const segment: []u8 = trimWhitespace(
             (splitAtDelimiter(line, '#') catch [2][]u8{ line, line })[0],
         );
-        if (parse.len == 0) continue;
+        if (segment.len == 0) continue;
+
+        // determine mode change (mode change is always followed by "continue;")
+        if (mode == ParseMode.Normal) {
+            if (splitAtDelimiter(segment, '{')) |mode_string_dual| {
+                const mode_string: []u8 = trimWhitespace(mode_string_dual[0]);
+                if (std.mem.eql(u8, mode_string, "sphere")) {
+                    mode = ParseMode.Sphere;
+                    try scene.append(geom.Object{});
+                } else {
+                    return ParsingError.UnknownBlock;
+                }
+                continue;
+            } else |_| {}
+        } else {
+            if (splitAtDelimiter(segment, '}')) |_| {
+                // TODO: ensure '}' is on its own line
+                mode = ParseMode.Normal;
+                continue;
+            } else |_| {}
+        }
 
         // parse key-value pair
-        const keyval: [2][]u8 = try splitAtDelimiter(parse, '=');
+        const keyval: [2][]u8 = try splitAtDelimiter(segment, '=');
         const key: []u8 = trimWhitespace(keyval[0]);
         const val: []u8 = trimWhitespace(keyval[1]);
 
         // assign settings
-        try setSetting(key, val, &settings);
+        switch (mode) {
+            ParseMode.Normal => {
+                try setSetting(key, val, settings);
+            },
+            ParseMode.Sphere => {
+                try setSphereSetting(key, val, &scene.items[scene.items.len - 1]);
+            },
+        }
     }
-
-    return settings;
 }
 
 pub fn main() !void {
-    const settings: Settings = try readInput("test_input.txt");
+    var arena_allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+
+    var settings: Settings = Settings{};
+    var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(arena);
+    defer scene_list.deinit(); // deinit and arena allocator?
+    try readInput("test_input.txt", &settings, &scene_list);
+
     std.debug.print("{}\n", .{settings.max_bounces});
     std.debug.print("{}\n", .{settings.num_samples});
     std.debug.print("{}\n", .{settings.window_w});
     std.debug.print("{}\n", .{settings.window_h});
     std.debug.print("{d} {d} {d}\n", .{ settings.camera_position.x, settings.camera_position.y, settings.camera_position.z });
     std.debug.print("{d} {d} {d}\n", .{ settings.target_position.x, settings.target_position.y, settings.target_position.z });
+
+    std.debug.print("SPHERES LEN: {}\n", .{scene_list.items.len});
+    for (scene_list.items, 0..) |object, i| {
+        std.debug.print("sphere {}\n", .{i});
+        std.debug.print("  center:      {} {} {}\n", .{ object.c.x, object.c.y, object.c.z });
+        std.debug.print("  radius:      {}\n", .{object.r});
+        std.debug.print("  reflectance: {} {} {}\n", .{ object.refl.x, object.refl.y, object.refl.z });
+        std.debug.print("  emittance:   {} {} {}\n", .{ object.emit.x, object.emit.y, object.emit.z });
+        std.debug.print("  material:    {}\n", .{object.mtrl});
+    }
 }

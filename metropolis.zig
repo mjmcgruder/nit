@@ -1,5 +1,6 @@
 const std = @import("std");
 const mth = @import("src/math.zig");
+const geom = @import("src/geometry.zig");
 
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
@@ -23,38 +24,6 @@ const PCG_rng = struct {
 
 // geometry definitions
 
-const Material = enum { diffuse, specular };
-
-const IntersectResult = struct {
-    d: f32, // distance
-    n: mth.Vec3, // normal
-    r: mth.Vec3, // reflectance
-    e: mth.Vec3, // emittance
-    m: Material,
-};
-
-const Object = struct {
-    c: mth.Vec3, // center
-    r: f32, // radius
-    refl: mth.Vec3, // reflectance
-    emit: mth.Vec3, // emittance
-    mtrl: Material, // material
-
-    pub inline fn intersect(this: Object, ro: mth.Vec3, rd: mth.Vec3) ?IntersectResult {
-        const oc: mth.Vec3 = mth.sub(ro, this.c);
-        const b: f32 = mth.dot(oc, rd);
-        const qc: mth.Vec3 = mth.sub(oc, mth.mul(b, rd));
-        const h: f32 = this.r * this.r - mth.dot(qc, qc);
-        if (h < 0.0)
-            return null;
-        const t: f32 = -b - @sqrt(h);
-        if (t <= 0.0) // tad clunky, no?
-            return null;
-        const n: mth.Vec3 = mth.normalize(mth.sub(mth.add(ro, mth.mul(rd, t)), this.c));
-        return IntersectResult{ .d = t, .n = n, .r = this.refl, .e = this.emit, .m = this.mtrl };
-    }
-};
-
 const BounceNode = struct {
     brdf: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     emit: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
@@ -77,97 +46,97 @@ const target_position: mth.Vec3 = mth.Vec3{ .x = 1.2, .y = -0.1, .z = 0.5 }; // 
 const up_vector: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
 const fov: f32 = 90.0; // horizontal field of view in degrees
 
-const scene = [_]Object{
-    Object{
+const scene = [_]geom.Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 0.3, .y = -0.4, .z = 0.0 },
         .r = 0.1,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.2, .y = -0.1, .z = 0.2 },
         .r = 0.2,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = geom.Material.specular,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.4, .y = -0.4, .z = -0.4 },
         .r = 0.1,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = geom.Material.specular,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.0, .y = -0.4, .z = 0.4 },
         .r = 0.1,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = geom.Material.specular,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 0.5, .y = -0.4, .z = 0.4 },
         .r = 0.1,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.specular,
+        .mtrl = geom.Material.specular,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.3, .y = 0.4, .z = 0.4 },
         .r = 0.08,
         .refl = mth.Vec3{ .x = 1.0, .y = 0.8, .z = 0.1 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.4, .y = -0.42, .z = 0.1 },
         .r = 0.08,
         .refl = mth.Vec3{ .x = 0.05, .y = 0.9, .z = 0.9 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.0, .y = -0.38, .z = 0.1 },
         .r = 0.12,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
         .r = 1000.0,
         .refl = mth.Vec3{ .x = 0.8, .y = 0.2, .z = 0.2 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
         .r = 1000.0,
         .refl = mth.Vec3{ .x = 0.8, .y = 0.0, .z = 0.8 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
         .r = 1000.0,
         .refl = mth.Vec3{ .x = 0.2, .y = 0.2, .z = 0.8 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
         .r = 1000.0,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
-    Object{
+    geom.Object{
         .c = mth.Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
         .r = 1000.0,
         .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
         .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = Material.diffuse,
+        .mtrl = geom.Material.diffuse,
     },
 };
 
@@ -179,8 +148,8 @@ const Pixel = struct {
     b: u8 = 0,
 };
 
-fn intersectSceneNaive(ro: mth.Vec3, rd: mth.Vec3) ?IntersectResult {
-    var intersect = IntersectResult{
+fn intersectSceneNaive(ro: mth.Vec3, rd: mth.Vec3) ?geom.IntersectResult {
+    var intersect = geom.IntersectResult{
         .d = std.math.floatMax(f32),
         .n = undefined,
         .r = undefined,
@@ -321,7 +290,7 @@ fn renderPixelRange(
                 if (intersectSceneNaive(ro, rd)) |intersect| {
                     var new_ray: mth.Vec3 = undefined;
                     switch (intersect.m) {
-                        Material.diffuse => {
+                        geom.Material.diffuse => {
                             new_ray = randomRayInHemisphere(intersect.n, rng);
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = mth.mul(intersect.r, 1.0 / std.math.pi),
@@ -330,7 +299,7 @@ fn renderPixelRange(
                                 .prob = 1.0 / (2.0 * std.math.pi),
                             };
                         },
-                        Material.specular => {
+                        geom.Material.specular => {
                             const wo: mth.Vec3 = mth.mul(rd, -1.0); // source light direction
                             new_ray = mth.normalize(mth.sub(mth.mul(2.0, mth.mul(mth.dot(intersect.n, wo), intersect.n)), wo));
                             const inv_cos_thetar = 1.0 / mth.dot(new_ray, intersect.n);
