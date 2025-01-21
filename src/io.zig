@@ -2,20 +2,22 @@ const std = @import("std");
 const mth = @import("math.zig");
 const geom = @import("geometry.zig");
 
-const ParsingError = error{
-    DelimiterNotFound,
-    KeyNotFound,
-    UnknownBlock,
-    UnknownEnum,
-};
-
-const Settings = struct {
-    max_bounces: usize = 8,
+pub const Settings = struct {
+    thread_count: usize = 1,
     num_samples: usize = 32,
     window_w: usize = 1920,
     window_h: usize = 1080,
     camera_position: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
     target_position: mth.Vec3 = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
+    up_vector: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 },
+    field_of_view: f32 = 90.0,
+};
+
+const ParsingError = error{
+    DelimiterNotFound,
+    KeyNotFound,
+    UnknownBlock,
+    UnknownEnum,
 };
 
 fn parseType(result_type: type, string: []u8) !result_type {
@@ -98,7 +100,10 @@ pub fn readInput(
     defer fID.close();
 
     var read_buffer: [1 << 10]u8 = undefined;
-    while (try fID.reader().readUntilDelimiterOrEof(&read_buffer, '\n')) |line| {
+    var line_num: usize = 1;
+    while (try fID.reader().readUntilDelimiterOrEof(&read_buffer, '\n')) |line| : (line_num += 1) {
+        errdefer std.debug.print("parsing error at line {}\n", .{line_num});
+
         // trim comments and extra white space
         const segment: []u8 = trimWhitespace(
             (splitAtDelimiter(line, '#') catch [2][]u8{ line, line })[0],

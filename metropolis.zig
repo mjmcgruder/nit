@@ -1,11 +1,10 @@
 const std = @import("std");
 const mth = @import("src/math.zig");
 const geom = @import("src/geometry.zig");
+const io = @import("src/io.zig");
 
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
-
-// random number generation
 
 const PCG_rng = struct {
     state: u32,
@@ -22,133 +21,7 @@ const PCG_rng = struct {
     }
 };
 
-// geometry definitions
-
-const BounceNode = struct {
-    brdf: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-    emit: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-    c_th: f32 = 0.0,
-    prob: f32 = 1.0,
-};
-
-// quality settings
-
-const max_bounces: usize = 1 << 3;
-var num_samples: usize = 1 << 10;
-
-// scene definition
-
-const window_w: usize = 1920; // window width in pixels
-const window_h: usize = 1080; // window height in pixels
-
-const camera_position: mth.Vec3 = mth.Vec3{ .x = 1.2, .y = -0.1, .z = -0.4 }; // camera position
-const target_position: mth.Vec3 = mth.Vec3{ .x = 1.2, .y = -0.1, .z = 0.5 }; // target position
-const up_vector: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 }; // up vector
-const fov: f32 = 90.0; // horizontal field of view in degrees
-
-const scene = [_]geom.Object{
-    geom.Object{
-        .c = mth.Vec3{ .x = 0.3, .y = -0.4, .z = 0.0 },
-        .r = 0.1,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 12.0, .y = 12.0, .z = 12.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.2, .y = -0.1, .z = 0.2 },
-        .r = 0.2,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.specular,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.4, .y = -0.4, .z = -0.4 },
-        .r = 0.1,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.specular,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.0, .y = -0.4, .z = 0.4 },
-        .r = 0.1,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.specular,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 0.5, .y = -0.4, .z = 0.4 },
-        .r = 0.1,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.specular,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.3, .y = 0.4, .z = 0.4 },
-        .r = 0.08,
-        .refl = mth.Vec3{ .x = 1.0, .y = 0.8, .z = 0.1 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.4, .y = -0.42, .z = 0.1 },
-        .r = 0.08,
-        .refl = mth.Vec3{ .x = 0.05, .y = 0.9, .z = 0.9 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.0, .y = -0.38, .z = 0.1 },
-        .r = 0.12,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.0, .y = 0.0, .z = 1000.0 + 0.5 },
-        .r = 1000.0,
-        .refl = mth.Vec3{ .x = 0.8, .y = 0.2, .z = 0.2 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1000.0 + 1.0 + 0.5, .y = 0.0, .z = 0.0 },
-        .r = 1000.0,
-        .refl = mth.Vec3{ .x = 0.8, .y = 0.0, .z = 0.8 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.0, .y = 0.0, .z = -1000.0 - 0.5 },
-        .r = 1000.0,
-        .refl = mth.Vec3{ .x = 0.2, .y = 0.2, .z = 0.8 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.0, .y = -1000.0 - 0.5, .z = 0.0 },
-        .r = 1000.0,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-    geom.Object{
-        .c = mth.Vec3{ .x = 1.0, .y = 1000.0 + 0.5, .z = 0.0 },
-        .r = 1000.0,
-        .refl = mth.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-        .emit = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-        .mtrl = geom.Material.diffuse,
-    },
-};
-
-// main program
-
-const Pixel = struct {
-    r: u8 = 0,
-    g: u8 = 0,
-    b: u8 = 0,
-};
-
-fn intersectSceneNaive(ro: mth.Vec3, rd: mth.Vec3) ?geom.IntersectResult {
+fn intersectSceneNaive(ro: mth.Vec3, rd: mth.Vec3, scene: []geom.Object) ?geom.IntersectResult {
     var intersect = geom.IntersectResult{
         .d = std.math.floatMax(f32),
         .n = undefined,
@@ -156,7 +29,7 @@ fn intersectSceneNaive(ro: mth.Vec3, rd: mth.Vec3) ?geom.IntersectResult {
         .e = undefined,
         .m = undefined,
     };
-    for (&scene) |*object| {
+    for (scene) |*object| {
         if (object.intersect(ro, rd)) |result| {
             if (result.d < intersect.d) {
                 intersect = result;
@@ -183,33 +56,12 @@ fn randomRayInHemisphere(n: mth.Vec3, rng: *PCG_rng) mth.Vec3 {
     );
 }
 
-fn randomRayInHemisphereMarsaglia(n: mth.Vec3, rng: *PCG_rng) mth.Vec3 {
-    const local_z: mth.Vec3 = n;
-    const local_y: mth.Vec3 = mth.normalize(
-        mth.cross(local_z, if (@abs(local_z.x) < 0.9) mth.unit_x else mth.unit_y),
-    );
-    const local_x: mth.Vec3 = mth.normalize(mth.cross(local_y, local_z));
-    while (true) {
-        const x1: f32 = rng.rand_f32() * 2.0 - 1.0;
-        const x2: f32 = rng.rand_f32() * 2.0 - 1.0;
-        const xs: f32 = x1 * x1 + x2 * x2;
-        if (xs >= 1.0) continue;
-        const rt: f32 = @sqrt(1.0 - xs);
-        const x: f32 = 2.0 * x1 * rt;
-        const y: f32 = 2.0 * x2 * rt;
-        var z: f32 = 1.0 - 2.0 * xs;
-        if (z < 0.0) z = -z;
-        return mth.normalize(
-            mth.add(mth.add(mth.mul(local_x, x), mth.mul(local_y, y)), mth.mul(local_z, z)),
-        );
-    }
-}
-
 var timer: std.time.Timer = undefined;
+const chunk_size: usize = 1 << 11;
+
 var last_print_time: u64 = undefined;
 var last_print_mutex: std.Thread.Mutex = std.Thread.Mutex{};
 
-const chunk_size: usize = 1 << 11;
 var chunk_start: usize = 0;
 var chunk_mutex: std.Thread.Mutex = std.Thread.Mutex{};
 
@@ -231,10 +83,18 @@ fn printRenderProgress(current_time: u64, total_pixels: u64) !void {
     }
 }
 
+const Pixel = struct {
+    r: u8 = 0,
+    g: u8 = 0,
+    b: u8 = 0,
+};
+
 fn dispatchRender(
     rays: []mth.Vec3,
-    frame_buffer: []Pixel,
+    scene: []geom.Object,
+    settings: io.Settings,
     thread_num: usize,
+    frame_buffer: []Pixel,
 ) !void {
     var rng: PCG_rng = PCG_rng{ .state = @as(u32, @intCast(42 + thread_num)) };
     while (chunk_start < frame_buffer.len) {
@@ -243,7 +103,15 @@ fn dispatchRender(
             const chunk_start_current = chunk_start;
             chunk_start = chunk_end;
             chunk_mutex.unlock();
-            try renderPixelRange(rays, frame_buffer, &rng, chunk_start_current, chunk_end);
+            try renderPixelRange(
+                rays,
+                scene,
+                settings,
+                &rng,
+                chunk_start_current,
+                chunk_end,
+                frame_buffer,
+            );
             {
                 finished_pixels_mutex.lock();
                 defer finished_pixels_mutex.unlock();
@@ -253,13 +121,23 @@ fn dispatchRender(
     }
 }
 
+const BounceNode = struct {
+    brdf: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    emit: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    c_th: f32 = 0.0,
+    prob: f32 = 1.0,
+};
+
 fn renderPixelRange(
     rays: []mth.Vec3,
-    frame_buffer: []Pixel,
+    scene: []geom.Object,
+    settings: io.Settings,
     rng: *PCG_rng,
     begin_i: usize,
     end_i: usize,
+    frame_buffer: []Pixel,
 ) !void {
+    const max_bounces: usize = 1 << 3;
     var bounce_stack: [max_bounces]BounceNode = undefined;
     var stack_i: usize = undefined;
 
@@ -280,14 +158,14 @@ fn renderPixelRange(
 
         var sample_i: usize = 0;
         var pixel_color: mth.Vec3 = mth.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
-        while (sample_i < num_samples) : (sample_i += 1) {
+        while (sample_i < settings.num_samples) : (sample_i += 1) {
             stack_i = 0;
 
             // build bounce stack
-            var ro: mth.Vec3 = camera_position;
+            var ro: mth.Vec3 = settings.camera_position;
             var rd: mth.Vec3 = initial_ray.*;
             while (stack_i < max_bounces) : (stack_i += 1) {
-                if (intersectSceneNaive(ro, rd)) |intersect| {
+                if (intersectSceneNaive(ro, rd, scene)) |intersect| {
                     var new_ray: mth.Vec3 = undefined;
                     switch (intersect.m) {
                         geom.Material.diffuse => {
@@ -332,7 +210,7 @@ fn renderPixelRange(
             // average sample color into pixel color
             pixel_color = mth.add(
                 pixel_color,
-                mth.mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),
+                mth.mul(incoming, 1.0 / @as(f32, @floatFromInt(settings.num_samples))),
             );
         }
 
@@ -347,14 +225,14 @@ fn renderPixelRange(
     }
 }
 
-fn writeImage(frame_buffer: []const Pixel, file_name: []const u8) !void {
+fn writeImage(frame_buffer: []const Pixel, settings: io.Settings, file_name: []const u8) !void {
     const file: std.fs.File = try std.fs.cwd().createFile(file_name, .{});
     defer file.close();
     var buffer_wrapper = std.io.bufferedWriter(file.writer());
     var file_writer = buffer_wrapper.writer();
 
     try file_writer.print("P3\n", .{});
-    try file_writer.print("{d} {d}\n", .{ window_w, window_h });
+    try file_writer.print("{d} {d}\n", .{ settings.window_w, settings.window_h });
     try file_writer.print("255\n", .{});
     for (frame_buffer) |pixel| {
         try file_writer.print("{d:>3} {d:>3} {d:>3}\n", .{ pixel.r, pixel.g, pixel.b });
@@ -372,43 +250,46 @@ pub fn main() !void {
     const arena = arena_allocator.allocator();
 
     const args = try std.process.argsAlloc(arena);
-    defer std.process.argsFree(arena, args); // does this still need a free with an arena?
+    defer std.process.argsFree(arena, args); // TODO: still needed with arena?
 
-    if (args.len != 3) {
-        try stdout.print("  usage: metropolis <thread_count> <sample_exponent>\n", .{});
+    if (args.len != 2) {
+        try stdout.print("  usage: metropolis <input_file>\n", .{});
         return;
     }
 
-    const thread_count = try std.fmt.parseInt(usize, args[1], 10);
-    num_samples = @as(usize, 1) << try std.fmt.parseInt(u6, args[2], 10);
+    var settings: io.Settings = io.Settings{};
+    var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(arena);
+    try io.readInput(args[1], &settings, &scene_list);
+    const scene: []geom.Object = scene_list.items;
+    defer scene_list.deinit(); // TODO: still needed with arena?
 
     // initialize image
 
-    const frame_buffer: []Pixel = try arena.alloc(Pixel, window_w * window_h);
+    const frame_buffer: []Pixel = try arena.alloc(Pixel, settings.window_w * settings.window_h);
     @memset(frame_buffer, Pixel{});
 
     // initialize rays
 
     try stdout.print("  initializing rays...\n", .{});
 
-    const window_h_flt: f32 = @floatFromInt(window_h);
-    const window_w_flt: f32 = @floatFromInt(window_w);
+    const window_h_flt: f32 = @floatFromInt(settings.window_h);
+    const window_w_flt: f32 = @floatFromInt(settings.window_w);
 
-    const t: mth.Vec3 = mth.normalize(mth.sub(target_position, camera_position)); // target vector
-    const b: mth.Vec3 = mth.normalize(mth.cross(t, up_vector)); // horizontal vector
+    const t: mth.Vec3 = mth.normalize(mth.sub(settings.target_position, settings.camera_position)); // target vector
+    const b: mth.Vec3 = mth.normalize(mth.cross(t, settings.up_vector)); // horizontal vector
     const v: mth.Vec3 = mth.normalize(mth.cross(b, t)); // vertical vector
 
-    const hw: f32 = @tan(0.5 * fov); // view port half width and height at distance 1
+    const hw: f32 = @tan(0.5 * settings.field_of_view); // view port half width and height at distance 1
     const hh: f32 = hw * ((window_h_flt - 1.0) / (window_w_flt - 1.0));
 
     const ul: mth.Vec3 = mth.add(mth.sub(t, mth.mul(hw, b)), mth.mul(hh, v)); // upper left point
     const inc_w: f32 = (2.0 * hw) / (window_w_flt - 1.0);
     const inc_h: f32 = (2.0 * hh) / (window_h_flt - 1.0);
 
-    const rays: []mth.Vec3 = try arena.alloc(mth.Vec3, window_w * window_h);
+    const rays: []mth.Vec3 = try arena.alloc(mth.Vec3, settings.window_w * settings.window_h);
     for (rays, 0..) |*item, i| {
-        const r: usize = i / window_w;
-        const c: usize = i - (window_w * r);
+        const r: usize = i / settings.window_w;
+        const c: usize = i - (settings.window_w * r);
         const r_flt: f32 = @floatFromInt(r);
         const c_flt: f32 = @floatFromInt(c);
         item.* = mth.normalize(
@@ -416,40 +297,19 @@ pub fn main() !void {
         );
     }
 
-    // render a depth map
-
-    // // find depth map and limits
-    // var min_depth: f32 = std.math.floatMax(f32);
-    // var max_depth: f32 = -std.math.floatMax(f32);
-    // const depths: []f32 = try allocator.alloc(f32, window_w * window_h);
-    // @memset(depths, std.math.floatMax(f32));
-    // for (rays, depths) |*ray, *depth| {
-    //     for (&scene) |*object| {
-    //         if (object.geometry.intersect(cp, ray.*)) |result| {
-    //             depth.* = @min(depth.*, result.dist);
-    //             min_depth = @min(min_depth, result.dist);
-    //             max_depth = @max(max_depth, result.dist);
-    //         }
-    //     }
-    // }
-    //
-    // // write depth map to frame buffer
-    // for (frame_buffer, depths) |*pixel, *depth| {
-    //     const scale = (depth.* - min_depth) / (max_depth - min_depth);
-    //     if (scale < 0.0 or scale > 1.0) continue;
-    //     const scale_int: u8 = @intFromFloat(scale * 255.0);
-    //     pixel.r = scale_int;
-    //     pixel.g = scale_int;
-    //     pixel.b = scale_int;
-    // }
-
     // render diffuse reflection
 
     try stdout.print("  rendering...\n", .{});
 
-    const pool = try arena.alloc(std.Thread, thread_count);
+    const pool = try arena.alloc(std.Thread, settings.thread_count);
     for (pool, 0..) |*thread, thread_num| {
-        thread.* = try std.Thread.spawn(.{}, dispatchRender, .{ rays, frame_buffer, thread_num });
+        thread.* = try std.Thread.spawn(.{}, dispatchRender, .{
+            rays,
+            scene,
+            settings,
+            thread_num,
+            frame_buffer,
+        });
     }
     for (pool) |thread| {
         thread.join();
@@ -458,5 +318,5 @@ pub fn main() !void {
 
     try stdout.print("\n  writing image...\n", .{});
 
-    try writeImage(frame_buffer, "image.ppm");
+    try writeImage(frame_buffer, settings, "image.ppm");
 }
