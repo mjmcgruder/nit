@@ -93,17 +93,17 @@ fn splitAtDelimiter(str: []u8, delim: u8) ParsingError![2][]u8 {
     return if (delimiter_found) output else ParsingError.DelimiterNotFound;
 }
 
-const ParseMode = enum {
-    Normal,
-    Sphere,
-};
-
 pub fn readInput(
     file_name: []const u8,
     settings: *Settings,
     scene: *std.ArrayList(geom.Object),
 ) !void {
-    var mode: ParseMode = ParseMode.Normal;
+    const ParseMode = enum {
+        normal,
+        sphere,
+    };
+
+    var mode: ParseMode = ParseMode.normal;
 
     const cwd: std.fs.Dir = std.fs.cwd();
     const fID: std.fs.File = try cwd.openFile(file_name, .{});
@@ -111,34 +111,36 @@ pub fn readInput(
 
     var read_buffer: [1 << 10]u8 = undefined;
     var line_num: usize = 1;
+    var next_line_normal: bool = false;
     while (try fID.reader().readUntilDelimiterOrEof(&read_buffer, '\n')) |line| : (line_num += 1) {
         errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
 
+        if (next_line_normal == true) {
+            mode = ParseMode.normal;
+            next_line_normal = false;
+        }
+
         // trim comments and extra white space
-        const segment: []u8 = trimWhitespace(
+        var segment: []u8 = trimWhitespace(
             (splitAtDelimiter(line, '#') catch [2][]u8{ line, line })[0],
         );
         if (segment.len == 0) continue;
 
         // determine mode change (mode change is always followed by "continue;")
-        if (mode == ParseMode.Normal) {
+        if (mode == ParseMode.normal) {
             if (splitAtDelimiter(segment, '{')) |mode_string_dual| {
-                const mode_string: []u8 = trimWhitespace(mode_string_dual[0]);
-                if (std.mem.eql(u8, mode_string, "sphere")) {
-                    mode = ParseMode.Sphere;
-                    try scene.append(geom.Object{});
-                } else {
-                    return ParsingError.UnknownBlock;
-                }
+                mode = try parseEnum(ParseMode, trimWhitespace(mode_string_dual[0]));
+                try scene.append(geom.Object{});
                 continue;
             } else |_| {}
         } else {
-            if (splitAtDelimiter(segment, '}')) |_| {
-                // TODO: ensure '}' is on its own line
-                mode = ParseMode.Normal;
-                continue;
+            if (splitAtDelimiter(segment, '}')) |close_string_dual| {
+                segment = trimWhitespace(close_string_dual[0]);
+                next_line_normal = true;
             } else |_| {}
         }
+
+        if (segment.len == 0) continue;
 
         // parse key-value pair
         const keyval: [2][]u8 = try splitAtDelimiter(segment, '=');
@@ -147,10 +149,10 @@ pub fn readInput(
 
         // assign settings
         switch (mode) {
-            ParseMode.Normal => {
+            ParseMode.normal => {
                 settings.* = try setSetting(key, val, settings.*);
             },
-            ParseMode.Sphere => {
+            ParseMode.sphere => {
                 const last_object: *geom.Object = &scene.items[scene.items.len - 1];
                 last_object.* = try setSetting(key, val, last_object.*);
             },
