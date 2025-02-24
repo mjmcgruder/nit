@@ -27,7 +27,7 @@ fn dispatchRender(
     thread_num: usize,
     frame_buffer: []io.Pixel,
 ) !void {
-    var rng: smp.PCG = smp.PCG{ .state = @as(u32, @intCast(42 + thread_num)) };
+    var rng: smp.PCGHash = smp.PCGHash{ .state = @as(u32, @intCast(42 + thread_num)) };
     while (chunk_start < frame_buffer.len) {
         if (chunk_mutex.tryLock()) {
             const chunk_end = @min(chunk_start + chunk_size, frame_buffer.len);
@@ -96,7 +96,7 @@ fn renderPixels(
     rays: []const m.Vec3,
     scene: []const geom.Object,
     settings: *const io.Settings,
-    rng: *smp.PCG,
+    rng: *smp.PCGHash,
     begin_i: usize,
     end_i: usize,
     frame_buffer: []io.Pixel,
