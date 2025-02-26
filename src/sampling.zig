@@ -34,10 +34,22 @@ pub const CoordinateAxes = struct {
 /// z-axis, all axes are normalized, and the coordinate system is right-handed.
 pub fn localCoordinateAxes(n: m.Vec3) CoordinateAxes {
     var local: CoordinateAxes = .{};
-    local.z = n;
+    local.z = m.normalize(n);
     local.y = m.normalize(m.cross(local.z, if (@abs(local.z.x) < 0.9) m.unit_x else m.unit_y));
     local.x = m.normalize(m.cross(local.y, local.z));
     return local;
+}
+
+test "local coordinate system is right handed" {
+    const axes: CoordinateAxes = localCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
+    try std.testing.expectApproxEqRel(1.0, m.dot(m.cross(axes.x, axes.y), axes.z), 1e-7);
+}
+
+test "local coordiante system is normalized" {
+    const axes: CoordinateAxes = localCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
+    try std.testing.expectApproxEqRel(1.0, m.mag(axes.x), 1e-7);
+    try std.testing.expectApproxEqRel(1.0, m.mag(axes.y), 1e-7);
+    try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 1e-7);
 }
 
 /// This function is modified from the sphere point picking algorithm from Wolfram Math World.
