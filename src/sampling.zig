@@ -69,6 +69,28 @@ pub fn randomRayInHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
 }
 
+test "ensure random hemisphere sampling lacks polar bias" {
+    const num_samp = 1000000;
+    const ray_pole = m.unit_z;
+    const ray_othr = m.normalize(m.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 });
+    const rtol = 1e-2;
+
+    var rng: PCGHash = .{ .state = 42 };
+    var tally_pole: usize = 0;
+    var tally_othr: usize = 0;
+    for (0..num_samp) |_| {
+        const ray_samp: m.Vec3 = randomRayInHemisphere(ray_pole, &rng);
+        if ((1.0 - m.dot(ray_samp, ray_pole)) < 0.1) tally_pole += 1;
+        if ((1.0 - m.dot(ray_samp, ray_othr)) < 0.1) tally_othr += 1;
+    }
+
+    try std.testing.expectApproxEqRel(
+        @as(f64, @floatFromInt(tally_pole)),
+        @as(f64, @floatFromInt(tally_othr)),
+        rtol,
+    );
+}
+
 /// Computes specular reflection given a normal vector, and a vector "w" pointing toward the light
 /// source (this is the opposite of the light's travel direction).
 pub fn specularReflection(n: m.Vec3, w: m.Vec3) m.Vec3 {
