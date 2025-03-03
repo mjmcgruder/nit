@@ -40,18 +40,6 @@ pub fn localCoordinateAxes(n: m.Vec3) CoordinateAxes {
     return local;
 }
 
-test "local coordinate system is right handed" {
-    const axes: CoordinateAxes = localCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
-    try std.testing.expectApproxEqRel(1.0, m.dot(m.cross(axes.x, axes.y), axes.z), 1e-7);
-}
-
-test "local coordiante system is normalized" {
-    const axes: CoordinateAxes = localCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
-    try std.testing.expectApproxEqRel(1.0, m.mag(axes.x), 1e-7);
-    try std.testing.expectApproxEqRel(1.0, m.mag(axes.y), 1e-7);
-    try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 1e-7);
-}
-
 /// This function is modified from the sphere point picking algorithm from Wolfram Math World.
 ///   https://mathworld.wolfram.com/SpherePointPicking.html
 /// The only modification is "u" is chosen on the range [0.0, 1.0] instead of [-1.0, 1.0]. This
@@ -69,7 +57,27 @@ pub fn randomRayInHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
 }
 
-test "ensure random hemisphere sampling lacks polar bias" {
+/// Computes specular reflection given a normal vector, and a vector "w" pointing toward the light
+/// source (this is the opposite of the light's travel direction).
+pub fn specularReflection(n: m.Vec3, w: m.Vec3) m.Vec3 {
+    return m.normalize(m.sub(m.mul(2.0, m.mul(m.dot(n, w), n)), w));
+}
+
+// TESTS -----
+
+test "localCoordinateAxes --- is right handed" {
+    const axes: CoordinateAxes = localCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
+    try std.testing.expectApproxEqRel(1.0, m.dot(m.cross(axes.x, axes.y), axes.z), 10 * m.eps);
+}
+
+test "localCoordinateAxes --- is normalized" {
+    const axes: CoordinateAxes = localCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
+    try std.testing.expectApproxEqRel(1.0, m.mag(axes.x), 10 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, m.mag(axes.y), 10 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 10 * m.eps);
+}
+
+test "randomRayInHemisphere --- no polar bias, normalized, hemispherical" {
     const num_samp = 1000000;
     const ray_pole = m.unit_z;
     const ray_othr = m.normalize(m.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 });
@@ -82,6 +90,9 @@ test "ensure random hemisphere sampling lacks polar bias" {
         const ray_samp: m.Vec3 = randomRayInHemisphere(ray_pole, &rng);
         if ((1.0 - m.dot(ray_samp, ray_pole)) < 0.1) tally_pole += 1;
         if ((1.0 - m.dot(ray_samp, ray_othr)) < 0.1) tally_othr += 1;
+        // test overall hemisphere shape on the side
+        try std.testing.expect(m.dot(ray_pole, ray_samp) >= 0.0);
+        try std.testing.expectApproxEqRel(m.mag(ray_samp), 1.0, 10 * m.eps);
     }
 
     try std.testing.expectApproxEqRel(
@@ -89,10 +100,4 @@ test "ensure random hemisphere sampling lacks polar bias" {
         @as(f64, @floatFromInt(tally_othr)),
         rtol,
     );
-}
-
-/// Computes specular reflection given a normal vector, and a vector "w" pointing toward the light
-/// source (this is the opposite of the light's travel direction).
-pub fn specularReflection(n: m.Vec3, w: m.Vec3) m.Vec3 {
-    return m.normalize(m.sub(m.mul(2.0, m.mul(m.dot(n, w), n)), w));
 }

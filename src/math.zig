@@ -1,12 +1,16 @@
+const std = @import("std");
+
+pub const unit_x: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 };
+pub const unit_y: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+pub const unit_z: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
+
+pub const eps: comptime_float = std.math.floatEps(f32);
+
 pub const Vec3 = struct {
     x: f32 = 0.0,
     y: f32 = 0.0,
     z: f32 = 0.0,
 };
-
-pub const unit_x: Vec3 = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 };
-pub const unit_y: Vec3 = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
-pub const unit_z: Vec3 = Vec3{ .x = 0.0, .y = 0.0, .z = 1.0 };
 
 pub inline fn broadcast(a: anytype) Vec3 {
     var result: Vec3 = undefined;
