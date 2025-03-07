@@ -1,5 +1,4 @@
-/*
+bin
+zig-out
 
-!.gitignore
-!metropolis.zig
-!src
+.zig-cache

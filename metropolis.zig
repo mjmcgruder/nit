@@ -5,6 +5,10 @@ const io = @import("src/io.zig");
 const smp = @import("src/sampling.zig");
 const geom = @import("src/geometry.zig");
 
+test {
+    _ = smp;
+}
+
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
 
