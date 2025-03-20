@@ -41,7 +41,7 @@ fn parseType(result_type: type, string: []u8) !result_type {
 }
 
 fn parseEnum(enum_type: type, string: []u8) !enum_type {
-    inline for (@typeInfo(enum_type).Enum.fields) |field| {
+    inline for (@typeInfo(enum_type).@"enum".fields) |field| {
         if (std.mem.eql(u8, string, field.name)) {
             return @field(enum_type, field.name);
         }
@@ -61,7 +61,7 @@ fn parseVector(string: []u8) !m.Vec3 {
 
 fn setSetting(key: []u8, val: []u8, settings: anytype) !@TypeOf(settings) {
     var new_settings = settings;
-    inline for (@typeInfo(@TypeOf(settings)).Struct.fields) |field| {
+    inline for (@typeInfo(@TypeOf(settings)).@"struct".fields) |field| {
         if (std.mem.eql(u8, key, field.name)) {
             @field(new_settings, field.name) = try parseType(field.type, val);
             return new_settings;

@@ -14,7 +14,7 @@ pub const Vec3 = struct {
 
 pub inline fn broadcast(a: anytype) Vec3 {
     var result: Vec3 = undefined;
-    inline for (@typeInfo(Vec3).Struct.fields) |field| {
+    inline for (@typeInfo(Vec3).@"struct".fields) |field| {
         @field(result, field.name) = switch (@TypeOf(a)) {
             Vec3 => @field(a, field.name),
             comptime_float => a,
