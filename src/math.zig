@@ -55,14 +55,8 @@ pub inline fn mul(a_in: anytype, b_in: anytype) Vec3 {
     };
 }
 
-pub inline fn div(a_in: anytype, b_in: anytype) Vec3 {
-    const a: Vec3 = broadcast(a_in);
-    const b: Vec3 = broadcast(b_in);
-    return Vec3{
-        .x = a.x / b.x,
-        .y = a.y / b.y,
-        .z = a.z / b.z,
-    };
+pub inline fn div(a_in: anytype, b_in: anytype) @TypeOf(a_in, b_in) {
+    return a_in / (b_in + std.math.floatEps(f32));
 }
 
 pub inline fn dot(a: Vec3, b: Vec3) f32 {
@@ -81,10 +75,14 @@ pub inline fn mag(a: Vec3) f32 {
     return @sqrt(dot(a, a));
 }
 
-pub inline fn normalize(a: Vec3) Vec3 {
-    return div(a, mag(a));
+pub noinline fn normalize(a: Vec3) Vec3 {
+    return mul(a, div(1.0, mag(a)));
 }
 
 pub inline fn clamp(a: f32, comptime min: f32, comptime max: f32) f32 {
     return if (a < min) min else if (a > max) max else a;
+}
+
+pub inline fn sanitizeNan(a: f32) f32 {
+    return if (std.math.isNan(a)) 0.0 else a;
 }

@@ -148,7 +148,7 @@ fn renderPixels(
                         geom.Material.specular => {
                             new_ray = smp.specularReflection(intersect.n, m.mul(rd, -1.0));
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = m.mul(intersect.r, 1.0 / m.dot(new_ray, intersect.n)),
+                                .brdf = m.mul(intersect.r, m.div(1.0, m.dot(new_ray, intersect.n))),
                                 .emit = intersect.e,
                                 .c_th = m.dot(new_ray, intersect.n),
                                 .prob = 1.0,
@@ -182,9 +182,9 @@ fn renderPixels(
 
         // set final color value
 
-        pixel_color.x = m.clamp(pixel_color.x, 0.0, 1.0);
-        pixel_color.y = m.clamp(pixel_color.y, 0.0, 1.0);
-        pixel_color.z = m.clamp(pixel_color.z, 0.0, 1.0);
+        pixel_color.x = m.sanitizeNan(m.clamp(pixel_color.x, 0.0, 1.0)); // pixel_color is NaN on
+        pixel_color.y = m.sanitizeNan(m.clamp(pixel_color.y, 0.0, 1.0)); // rare occasion ...
+        pixel_color.z = m.sanitizeNan(m.clamp(pixel_color.z, 0.0, 1.0)); //   don't know why yet...
         pixel.r = @intFromFloat(pixel_color.x * 255.0);
         pixel.g = @intFromFloat(pixel_color.y * 255.0);
         pixel.b = @intFromFloat(pixel_color.z * 255.0);
