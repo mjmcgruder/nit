@@ -176,30 +176,56 @@ pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []
     try buffer_wrapper.flush();
 }
 
-pub fn main() !void {
-    var arena_allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena_allocator.deinit();
-    const arena = arena_allocator.allocator();
+// TESTS -----
 
-    var settings: Settings = Settings{};
-    var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(arena);
-    defer scene_list.deinit(); // deinit and arena allocator?
-    try readInput("test_input.txt", &settings, &scene_list);
+test "readInput --- reads an input file" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
 
-    stdout.print("{}\n", .{settings.max_bounces});
-    stdout.print("{}\n", .{settings.num_samples});
-    stdout.print("{}\n", .{settings.window_w});
-    stdout.print("{}\n", .{settings.window_h});
-    stdout.print("{d} {d} {d}\n", .{ settings.camera_position.x, settings.camera_position.y, settings.camera_position.z });
-    stdout.print("{d} {d} {d}\n", .{ settings.target_position.x, settings.target_position.y, settings.target_position.z });
+    const allocator: std.mem.Allocator = arena.allocator();
 
-    stdout.print("SPHERES LEN: {}\n", .{scene_list.items.len});
-    for (scene_list.items, 0..) |object, i| {
-        stdout.print("sphere {}\n", .{i});
-        stdout.print("  center:      {} {} {}\n", .{ object.c.x, object.c.y, object.c.z });
-        stdout.print("  radius:      {}\n", .{object.r});
-        stdout.print("  reflectance: {} {} {}\n", .{ object.refl.x, object.refl.y, object.refl.z });
-        stdout.print("  emittance:   {} {} {}\n", .{ object.emit.x, object.emit.y, object.emit.z });
-        stdout.print("  material:    {}\n", .{object.mtrl});
-    }
+    var settings = Settings{};
+    var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(allocator);
+    try readInput("test_data/input.txt", &settings, &scene_list);
+    const scene: []geom.Object = scene_list.items;
+    defer scene_list.deinit();
+
+    try std.testing.expectEqual(16, settings.thread_count);
+    try std.testing.expectEqual(8192, settings.num_samples);
+    try std.testing.expectEqual(1920, settings.window_w);
+    try std.testing.expectEqual(1080, settings.window_h);
+    try std.testing.expectEqual(1.2, settings.camera_position.x);
+    try std.testing.expectEqual(-0.1, settings.camera_position.y);
+    try std.testing.expectEqual(-0.4, settings.camera_position.z);
+    try std.testing.expectEqual(1.2, settings.target_position.x);
+    try std.testing.expectEqual(-0.1, settings.target_position.y);
+    try std.testing.expectEqual(0.5, settings.target_position.z);
+    try std.testing.expectEqual(0.0, settings.up_vector.x);
+    try std.testing.expectEqual(1.0, settings.up_vector.y);
+    try std.testing.expectEqual(0.0, settings.up_vector.z);
+    try std.testing.expectEqual(90.0, settings.field_of_view);
+
+    try std.testing.expectApproxEqRel(1.4, scene[0].cntr.x, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[0].cntr.y, 4 * m.eps);
+    try std.testing.expectApproxEqRel(-0.4, scene[0].cntr.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.1, scene[0].rdus, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[0].refl.x, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[0].refl.y, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[0].refl.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(12.0, scene[0].emit.x, 4 * m.eps);
+    try std.testing.expectApproxEqRel(12.0, scene[0].emit.y, 4 * m.eps);
+    try std.testing.expectApproxEqRel(12.0, scene[0].emit.z, 4 * m.eps);
+    try std.testing.expectEqual(geom.Material.diffuse, scene[0].mtrl);
+
+    try std.testing.expectApproxEqRel(1.0, scene[1].cntr.x, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].cntr.y, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1000.5, scene[1].cntr.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1000.0, scene[1].rdus, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.8, scene[1].refl.x, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.2, scene[1].refl.y, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.2, scene[1].refl.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].emit.x, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].emit.y, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].emit.z, 4 * m.eps);
+    try std.testing.expectEqual(geom.Material.specular, scene[1].mtrl);
 }

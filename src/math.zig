@@ -56,7 +56,7 @@ pub inline fn mul(a_in: anytype, b_in: anytype) Vec3 {
 }
 
 pub inline fn div(a_in: anytype, b_in: anytype) @TypeOf(a_in, b_in) {
-    return a_in / (b_in + std.math.floatEps(f32));
+    return a_in / (b_in + eps);
 }
 
 pub inline fn dot(a: Vec3, b: Vec3) f32 {

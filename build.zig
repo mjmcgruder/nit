@@ -24,5 +24,10 @@ pub fn build(b: *std.Build) !void {
             .use_llvm = use_llvm,
         });
         b.installArtifact(unit_tests);
+        b.installDirectory(.{
+            .source_dir = b.path("src/test_data"),
+            .install_dir = .bin,
+            .install_subdir = "test_data",
+        });
     }
 }

@@ -7,6 +7,8 @@ const geom = @import("src/geometry.zig");
 
 test {
     _ = smp;
+    _ = geom;
+    _ = io;
 }
 
 const stdout = std.io.getStdOut().writer();
@@ -80,20 +82,20 @@ fn printRenderProgress(current_time: u64, total_pixels: u64) !void {
 
 fn intersectScene(ro: m.Vec3, rd: m.Vec3, scene: []const geom.Object) ?geom.IntersectResult {
     var intersect = geom.IntersectResult{
-        .d = std.math.floatMax(f32),
-        .n = undefined,
-        .r = undefined,
-        .e = undefined,
-        .m = undefined,
+        .dist = std.math.floatMax(f32),
+        .norm = undefined,
+        .refl = undefined,
+        .emit = undefined,
+        .mtrl = undefined,
     };
     for (scene) |*object| {
         if (object.intersect(ro, rd)) |result| {
-            if (result.d < intersect.d) {
+            if (result.dist < intersect.dist) {
                 intersect = result;
             }
         }
     }
-    return if (intersect.d == std.math.floatMax(f32)) null else intersect;
+    return if (intersect.dist == std.math.floatMax(f32)) null else intersect;
 }
 
 fn renderPixels(
@@ -135,27 +137,30 @@ fn renderPixels(
             while (stack_i < max_bounces) : (stack_i += 1) {
                 if (intersectScene(ro, rd, scene)) |intersect| {
                     var new_ray: m.Vec3 = undefined;
-                    switch (intersect.m) {
+                    switch (intersect.mtrl) {
                         geom.Material.diffuse => {
-                            new_ray = smp.randomRayInHemisphere(intersect.n, rng);
+                            new_ray = smp.sampleHemisphere(intersect.norm, rng);
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = m.mul(intersect.r, 1.0 / std.math.pi),
-                                .emit = intersect.e,
-                                .c_th = m.dot(new_ray, intersect.n),
+                                .brdf = m.mul(intersect.refl, 1.0 / std.math.pi),
+                                .emit = intersect.emit,
+                                .c_th = m.dot(new_ray, intersect.norm),
                                 .prob = 1.0 / (2.0 * std.math.pi),
                             };
                         },
                         geom.Material.specular => {
-                            new_ray = smp.specularReflection(intersect.n, m.mul(rd, -1.0));
+                            new_ray = smp.reflect(intersect.norm, m.mul(rd, -1.0));
                             bounce_stack[stack_i] = BounceNode{
-                                .brdf = m.mul(intersect.r, m.div(1.0, m.dot(new_ray, intersect.n))),
-                                .emit = intersect.e,
-                                .c_th = m.dot(new_ray, intersect.n),
+                                .brdf = m.mul(
+                                    intersect.refl,
+                                    m.div(1.0, m.dot(new_ray, intersect.norm)),
+                                ),
+                                .emit = intersect.emit,
+                                .c_th = m.dot(new_ray, intersect.norm),
                                 .prob = 1.0,
                             };
                         },
                     }
-                    ro = m.add(ro, m.mul(rd, intersect.d));
+                    ro = m.add(ro, m.mul(rd, intersect.dist));
                     rd = new_ray;
                 } else {
                     break;
@@ -224,11 +229,12 @@ pub fn main() !void {
     // preliminaries
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const allocator = arena.allocator();
     defer arena.deinit();
 
+    const allocator: std.mem.Allocator = arena.allocator();
+
     const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args); // TODO: still needed with arena?
+    defer std.process.argsFree(allocator, args);
 
     if (args.len != 2) {
         try stdout.print("  usage: metropolis <input_file>\n", .{});
@@ -239,7 +245,7 @@ pub fn main() !void {
     var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(allocator);
     try io.readInput(args[1], &settings, &scene_list);
     const scene: []geom.Object = scene_list.items;
-    defer scene_list.deinit(); // TODO: still needed with arena?
+    defer scene_list.deinit();
 
     // initialization
 
@@ -253,6 +259,7 @@ pub fn main() !void {
 
     try stdout.print("  initializing rays...\n", .{});
     const rays: []m.Vec3 = try initializePerspectiveRays(settings, allocator); // TODO: free with arena?
+    defer allocator.free(rays);
 
     // render diffuse reflection
 
