@@ -179,13 +179,8 @@ pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []
 // TESTS -----
 
 test "readInput --- reads an input file" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const allocator: std.mem.Allocator = arena.allocator();
-
     var settings = Settings{};
-    var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(allocator);
+    var scene_list = std.ArrayList(geom.Object).init(std.testing.allocator);
     try readInput("test_data/input.txt", &settings, &scene_list);
     const scene: []geom.Object = scene_list.items;
     defer scene_list.deinit();
