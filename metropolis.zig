@@ -6,9 +6,10 @@ const smp = @import("src/sampling.zig");
 const geom = @import("src/geometry.zig");
 
 test {
+    _ = m;
+    _ = io;
     _ = smp;
     _ = geom;
-    _ = io;
 }
 
 const stdout = std.io.getStdOut().writer();

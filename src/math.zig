@@ -86,3 +86,75 @@ pub inline fn clamp(a: f32, comptime min: f32, comptime max: f32) f32 {
 pub inline fn sanitizeNan(a: f32) f32 {
     return if (std.math.isNan(a)) 0.0 else a;
 }
+
+// TESTS -----
+
+test "add --- vector add" {
+    const a = Vec3{ .x = 1.4, .y = 0.2, .z = 0.3 };
+    const b = Vec3{ .x = 0.9, .y = 0.8, .z = 0.1 };
+    const c = add(a, b);
+    try std.testing.expectApproxEqRel(2.3, c.x, 4 * eps);
+    try std.testing.expectApproxEqRel(1.0, c.y, 4 * eps);
+    try std.testing.expectApproxEqRel(0.4, c.z, 4 * eps);
+}
+
+test "sub --- vector sub" {
+    const a = Vec3{ .x = 1.4, .y = 0.2, .z = 0.3 };
+    const b = Vec3{ .x = 0.9, .y = 0.8, .z = 0.1 };
+    const c = sub(a, b);
+    try std.testing.expectApproxEqRel(0.5, c.x, 4 * eps);
+    try std.testing.expectApproxEqRel(-0.6, c.y, 4 * eps);
+    try std.testing.expectApproxEqRel(0.2, c.z, 4 * eps);
+}
+
+test "mul --- vector mul" {
+    const a = Vec3{ .x = 1.4, .y = 0.2, .z = 0.3 };
+    const b = Vec3{ .x = 0.9, .y = 0.8, .z = 0.1 };
+    const c = mul(a, b);
+    try std.testing.expectApproxEqRel(1.4 * 0.9, c.x, 4 * eps);
+    try std.testing.expectApproxEqRel(0.2 * 0.8, c.y, 4 * eps);
+    try std.testing.expectApproxEqRel(0.3 * 0.1, c.z, 4 * eps);
+}
+
+test "div --- comptime_float" {
+    const a: comptime_float = 4.2;
+    const b: f32 = 6.3;
+    const c: f32 = div(a, b);
+    try std.testing.expectApproxEqRel(4.2 / 6.3, c, 4 * eps);
+}
+
+test "div --- zero by zero" {
+    const a: f32 = 0.0;
+    const b: f32 = 0.0;
+    const c: f32 = div(a, b);
+    try std.testing.expectEqual(0.0, c);
+}
+
+test "dot --- unit circle check" {
+    const a = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+    const b = Vec3{
+        .x = std.math.cos(120.0 * (std.math.pi / 180.0)),
+        .y = std.math.sin(120.0 * (std.math.pi / 180.0)),
+        .z = 0.0,
+    };
+    try std.testing.expectApproxEqRel(@sqrt(3.0) / 2.0, dot(a, b), 4 * eps);
+}
+
+test "cross --- make orthogonal axes" {
+    const x = Vec3{ .x = 1.0, .y = 0.0, .z = 0.0 };
+    const y = Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+    const z: Vec3 = cross(x, y);
+    try std.testing.expectApproxEqAbs(0.0, z.x, 4 * eps);
+    try std.testing.expectApproxEqAbs(0.0, z.y, 4 * eps);
+    try std.testing.expectApproxEqAbs(1.0, z.z, 4 * eps);
+}
+
+test "mag --- unit circle" {
+    const a = Vec3{ .x = 1.0 / 2.0, .y = @sqrt(3.0) / 2.0, .z = 0.0 };
+    try std.testing.expectApproxEqRel(1.0, mag(a), 4 * eps);
+}
+
+test "normalize --- makes magnitude 1" {
+    const a = Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 };
+    try std.testing.expectApproxEqRel(1.0, mag(normalize(a)), 4 * eps);
+}
