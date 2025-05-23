@@ -19,13 +19,12 @@ var render_timer: std.time.Timer = undefined;
 const chunk_size: usize = 1 << 11;
 
 var last_print_time: u64 = undefined;
-var last_print_mutex: std.Thread.Mutex = std.Thread.Mutex{};
+var last_print_mutex = std.Thread.Mutex{};
 
 var chunk_start: usize = 0;
-var chunk_mutex: std.Thread.Mutex = std.Thread.Mutex{};
+var chunk_mutex = std.Thread.Mutex{};
 
 var finished_pixels: usize = 0;
-var finished_pixels_mutex: std.Thread.Mutex = std.Thread.Mutex{};
 
 fn dispatchRender(
     rays: []const m.Vec3,
@@ -37,8 +36,8 @@ fn dispatchRender(
     var rng: smp.PCGHash = smp.PCGHash{ .state = @as(u32, @intCast(42 + thread_num)) };
     while (chunk_start < frame_buffer.len) {
         if (chunk_mutex.tryLock()) {
-            const chunk_end = @min(chunk_start + chunk_size, frame_buffer.len);
-            const chunk_start_current = chunk_start;
+            const chunk_end: usize = @min(chunk_start + chunk_size, frame_buffer.len);
+            const chunk_start_current: usize = chunk_start;
             chunk_start = chunk_end;
             chunk_mutex.unlock();
             try renderPixels(
@@ -50,11 +49,6 @@ fn dispatchRender(
                 chunk_end,
                 frame_buffer,
             );
-            {
-                finished_pixels_mutex.lock();
-                defer finished_pixels_mutex.unlock();
-                finished_pixels += chunk_end - chunk_start_current;
-            }
         }
     }
 }
@@ -114,6 +108,15 @@ fn renderPixels(
 
     var pixel_i: usize = begin_i;
     while (pixel_i < end_i) : (pixel_i += 1) {
+        // count each pixel for output progress update purposes
+
+        _ = @atomicRmw(
+            usize,
+            &finished_pixels,
+            std.builtin.AtomicRmwOp.Add,
+            1,
+            std.builtin.AtomicOrder.acq_rel,
+        );
 
         // occasionally print a progress update
 
