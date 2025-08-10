@@ -75,7 +75,7 @@ pub inline fn mag(a: Vec3) f32 {
     return @sqrt(dot(a, a));
 }
 
-pub noinline fn normalize(a: Vec3) Vec3 {
+pub inline fn normalize(a: Vec3) Vec3 {
     return mul(a, div(1.0, mag(a)));
 }
 
