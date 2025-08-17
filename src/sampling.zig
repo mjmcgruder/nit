@@ -25,9 +25,9 @@ pub const PCGHash = struct {
 };
 
 pub const CoordinateAxes = struct {
-    x: m.Vec3 = .{ .x = 1.0, .y = 0.0, .z = 0.0 },
-    y: m.Vec3 = .{ .x = 0.0, .y = 1.0, .z = 0.0 },
-    z: m.Vec3 = .{ .x = 0.0, .y = 0.0, .z = 1.0 },
+    x: m.Vec3 = .{ .data = .{ 1.0, 0.0, 0.0 } },
+    y: m.Vec3 = .{ .data = .{ 0.0, 1.0, 0.0 } },
+    z: m.Vec3 = .{ .data = .{ 0.0, 0.0, 1.0 } },
 };
 
 /// Generates an arbitrary set of local coordinate axes such that the input normal vector is on the
@@ -35,7 +35,7 @@ pub const CoordinateAxes = struct {
 pub fn buildCoordinateAxes(n: m.Vec3) CoordinateAxes {
     var local: CoordinateAxes = .{};
     local.z = m.normalize(n);
-    local.y = m.normalize(m.cross(local.z, if (@abs(local.z.x) < 0.9) m.unit_x else m.unit_y));
+    local.y = m.normalize(m.cross(local.z, if (@abs(local.z.data[0]) < 0.9) m.unit_x else m.unit_y));
     local.x = m.normalize(m.cross(local.y, local.z));
     return local;
 }
@@ -66,12 +66,12 @@ pub fn reflect(n: m.Vec3, w: m.Vec3) m.Vec3 {
 // TESTS -----
 
 test "buildLocalCoordinateAxes --- is right handed" {
-    const axes: CoordinateAxes = buildCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
+    const axes: CoordinateAxes = buildCoordinateAxes(.{ .data = .{ -1.0, 2.71, 3.14 } });
     try std.testing.expectApproxEqRel(1.0, m.dot(m.cross(axes.x, axes.y), axes.z), 10 * m.eps);
 }
 
 test "buildLocalCoordinateAxes --- is normalized" {
-    const axes: CoordinateAxes = buildCoordinateAxes(.{ .x = -1.0, .y = 2.71, .z = 3.14 });
+    const axes: CoordinateAxes = buildCoordinateAxes(.{ .data = .{ -1.0, 2.71, 3.14 } });
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.x), 10 * m.eps);
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.y), 10 * m.eps);
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 10 * m.eps);
@@ -80,7 +80,7 @@ test "buildLocalCoordinateAxes --- is normalized" {
 test "sampleHemisphere --- no polar bias, normalized, hemispherical" {
     const num_samp = 1000000;
     const ray_pole = m.unit_z;
-    const ray_othr = m.normalize(m.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 });
+    const ray_othr = m.normalize(m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
     const rtol = 1e-2;
 
     var rng: PCGHash = .{ .state = 42 };
@@ -103,17 +103,17 @@ test "sampleHemisphere --- no polar bias, normalized, hemispherical" {
 }
 
 test "reflect --- between axes" {
-    const n: m.Vec3 = m.normalize(.{ .x = -1.0, .y = 0.0, .z = -1.0 });
-    const w: m.Vec3 = m.normalize(.{ .x = 0.0, .y = 0.0, .z = -1.0 });
+    const n: m.Vec3 = m.normalize(.{ .data = .{ -1.0, 0.0, -1.0 } });
+    const w: m.Vec3 = m.normalize(.{ .data = .{ 0.0, 0.0, -1.0 } });
     const r: m.Vec3 = reflect(n, w);
-    try std.testing.expectApproxEqAbs(-1.0, r.x, 10 * m.eps);
-    try std.testing.expectApproxEqAbs(0.0, r.y, 10 * m.eps);
-    try std.testing.expectApproxEqAbs(0.0, r.z, 10 * m.eps);
+    try std.testing.expectApproxEqAbs(-1.0, r.data[0], 10 * m.eps);
+    try std.testing.expectApproxEqAbs(0.0, r.data[1], 10 * m.eps);
+    try std.testing.expectApproxEqAbs(0.0, r.data[2], 10 * m.eps);
 }
 
 test "reflect --- equal dot product" {
     var rng: PCGHash = .{ .state = 37 };
-    const n: m.Vec3 = m.normalize(.{ .x = -1.0, .y = -1.0, .z = -1.0 });
+    const n: m.Vec3 = m.normalize(.{ .data = .{ -1.0, -1.0, -1.0 } });
     const w: m.Vec3 = sampleHemisphere(n, &rng);
     const r: m.Vec3 = reflect(n, w);
     try std.testing.expectApproxEqRel(m.dot(n, w), m.dot(n, r), 4 * m.eps);

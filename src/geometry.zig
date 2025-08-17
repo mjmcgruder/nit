@@ -13,10 +13,10 @@ pub const IntersectResult = struct {
 };
 
 pub const Object = struct {
-    cntr: mm.Vec3 = mm.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    cntr: mm.Vec3 = mm.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     rdus: f32 = 1.0,
-    refl: mm.Vec3 = mm.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-    emit: mm.Vec3 = mm.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    refl: mm.Vec3 = mm.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
+    emit: mm.Vec3 = mm.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     mtrl: Material = Material.diffuse,
 
     pub inline fn intersect(this: Object, ro: mm.Vec3, rd: mm.Vec3) ?IntersectResult {
@@ -42,20 +42,20 @@ pub const Object = struct {
 // TESTS -----
 
 test "Object.intersect --- intersection ahead" {
-    const sphere: Object = .{ .cntr = .{ .x = 1.0, .y = 0.0, .z = 0.0 }, .rdus = 0.1 };
-    const ro: mm.Vec3 = .{ .x = 0.0, .y = 0.0, .z = 0.0 };
-    const rd: mm.Vec3 = .{ .x = 1.0, .y = 0.0, .z = 0.0 };
+    const sphere: Object = .{ .cntr = .{ .data = .{ 1.0, 0.0, 0.0 } }, .rdus = 0.1 };
+    const ro: mm.Vec3 = .{ .data = .{ 0.0, 0.0, 0.0 } };
+    const rd: mm.Vec3 = .{ .data = .{ 1.0, 0.0, 0.0 } };
     const intersect: IntersectResult = sphere.intersect(ro, rd).?;
     try std.testing.expectApproxEqAbs(0.9, intersect.dist, 10 * mm.eps);
-    try std.testing.expectApproxEqAbs(-1.0, intersect.norm.x, 10 * mm.eps);
-    try std.testing.expectApproxEqAbs(0.0, intersect.norm.y, 10 * mm.eps);
-    try std.testing.expectApproxEqAbs(0.0, intersect.norm.z, 10 * mm.eps);
+    try std.testing.expectApproxEqAbs(-1.0, intersect.norm.data[0], 10 * mm.eps);
+    try std.testing.expectApproxEqAbs(0.0, intersect.norm.data[1], 10 * mm.eps);
+    try std.testing.expectApproxEqAbs(0.0, intersect.norm.data[2], 10 * mm.eps);
 }
 
 test "Object.intersect --- intersection behind (miss)" {
-    const sphere: Object = .{ .cntr = .{ .x = 1.0, .y = 0.0, .z = 0.0 }, .rdus = 0.1 };
-    const ro: mm.Vec3 = .{ .x = 0.0, .y = 0.0, .z = 0.0 };
-    const rd: mm.Vec3 = .{ .x = -1.0, .y = 0.0, .z = 0.0 };
+    const sphere: Object = .{ .cntr = .{ .data = .{ 1.0, 0.0, 0.0 } }, .rdus = 0.1 };
+    const ro: mm.Vec3 = .{ .data = .{ 0.0, 0.0, 0.0 } };
+    const rd: mm.Vec3 = .{ .data = .{ -1.0, 0.0, 0.0 } };
     const intersect: IntersectResult = sphere.intersect(ro, rd) orelse .{ .dist = 42.0 };
     try std.testing.expectEqual(42.0, intersect.dist);
 }

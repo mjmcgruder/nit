@@ -11,9 +11,9 @@ pub const Settings = struct {
     num_samples: usize = 32,
     window_w: usize = 1920,
     window_h: usize = 1080,
-    camera_position: m.Vec3 = m.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-    target_position: m.Vec3 = m.Vec3{ .x = 1.0, .y = 1.0, .z = 1.0 },
-    up_vector: m.Vec3 = m.Vec3{ .x = 0.0, .y = 1.0, .z = 0.0 },
+    camera_position: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
+    target_position: m.Vec3 = m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
+    up_vector: m.Vec3 = m.Vec3{ .data = .{0.0, 1.0, 0.0} },
     field_of_view: f32 = 90.0,
 };
 
@@ -52,11 +52,11 @@ fn parseEnum(enum_type: type, string: []u8) !enum_type {
 fn parseVector(string: []u8) !m.Vec3 {
     const split0: [2][]u8 = try splitAtDelimiter(string, ',');
     const split1: [2][]u8 = try splitAtDelimiter(split0[1], ',');
-    return m.Vec3{
-        .x = try std.fmt.parseFloat(f32, split0[0]),
-        .y = try std.fmt.parseFloat(f32, split1[0]),
-        .z = try std.fmt.parseFloat(f32, split1[1]),
-    };
+    return m.Vec3{ .data = .{
+        try std.fmt.parseFloat(f32, split0[0]),
+        try std.fmt.parseFloat(f32, split1[0]),
+        try std.fmt.parseFloat(f32, split1[1]),
+    } };
 }
 
 fn setSetting(key: []u8, val: []u8, settings: anytype) !@TypeOf(settings) {
@@ -189,38 +189,38 @@ test "readInput --- reads an input file" {
     try std.testing.expectEqual(8192, settings.num_samples);
     try std.testing.expectEqual(1920, settings.window_w);
     try std.testing.expectEqual(1080, settings.window_h);
-    try std.testing.expectEqual(1.2, settings.camera_position.x);
-    try std.testing.expectEqual(-0.1, settings.camera_position.y);
-    try std.testing.expectEqual(-0.4, settings.camera_position.z);
-    try std.testing.expectEqual(1.2, settings.target_position.x);
-    try std.testing.expectEqual(-0.1, settings.target_position.y);
-    try std.testing.expectEqual(0.5, settings.target_position.z);
-    try std.testing.expectEqual(0.0, settings.up_vector.x);
-    try std.testing.expectEqual(1.0, settings.up_vector.y);
-    try std.testing.expectEqual(0.0, settings.up_vector.z);
+    try std.testing.expectEqual(1.2, settings.camera_position.data[0]);
+    try std.testing.expectEqual(-0.1, settings.camera_position.data[1]);
+    try std.testing.expectEqual(-0.4, settings.camera_position.data[2]);
+    try std.testing.expectEqual(1.2, settings.target_position.data[0]);
+    try std.testing.expectEqual(-0.1, settings.target_position.data[1]);
+    try std.testing.expectEqual(0.5, settings.target_position.data[2]);
+    try std.testing.expectEqual(0.0, settings.up_vector.data[0]);
+    try std.testing.expectEqual(1.0, settings.up_vector.data[1]);
+    try std.testing.expectEqual(0.0, settings.up_vector.data[2]);
     try std.testing.expectEqual(90.0, settings.field_of_view);
 
-    try std.testing.expectApproxEqRel(1.4, scene[0].cntr.x, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.0, scene[0].cntr.y, 4 * m.eps);
-    try std.testing.expectApproxEqRel(-0.4, scene[0].cntr.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.4, scene[0].cntr.data[0], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[0].cntr.data[1], 4 * m.eps);
+    try std.testing.expectApproxEqRel(-0.4, scene[0].cntr.data[2], 4 * m.eps);
     try std.testing.expectApproxEqRel(0.1, scene[0].rdus, 4 * m.eps);
-    try std.testing.expectApproxEqRel(1.0, scene[0].refl.x, 4 * m.eps);
-    try std.testing.expectApproxEqRel(1.0, scene[0].refl.y, 4 * m.eps);
-    try std.testing.expectApproxEqRel(1.0, scene[0].refl.z, 4 * m.eps);
-    try std.testing.expectApproxEqRel(12.0, scene[0].emit.x, 4 * m.eps);
-    try std.testing.expectApproxEqRel(12.0, scene[0].emit.y, 4 * m.eps);
-    try std.testing.expectApproxEqRel(12.0, scene[0].emit.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[0].refl.data[0], 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[0].refl.data[1], 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[0].refl.data[2], 4 * m.eps);
+    try std.testing.expectApproxEqRel(12.0, scene[0].emit.data[0], 4 * m.eps);
+    try std.testing.expectApproxEqRel(12.0, scene[0].emit.data[1], 4 * m.eps);
+    try std.testing.expectApproxEqRel(12.0, scene[0].emit.data[2], 4 * m.eps);
     try std.testing.expectEqual(geom.Material.diffuse, scene[0].mtrl);
 
-    try std.testing.expectApproxEqRel(1.0, scene[1].cntr.x, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.0, scene[1].cntr.y, 4 * m.eps);
-    try std.testing.expectApproxEqRel(1000.5, scene[1].cntr.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(1.0, scene[1].cntr.data[0], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].cntr.data[1], 4 * m.eps);
+    try std.testing.expectApproxEqRel(1000.5, scene[1].cntr.data[2], 4 * m.eps);
     try std.testing.expectApproxEqRel(1000.0, scene[1].rdus, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.8, scene[1].refl.x, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.2, scene[1].refl.y, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.2, scene[1].refl.z, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.0, scene[1].emit.x, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.0, scene[1].emit.y, 4 * m.eps);
-    try std.testing.expectApproxEqRel(0.0, scene[1].emit.z, 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.8, scene[1].refl.data[0], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.2, scene[1].refl.data[1], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.2, scene[1].refl.data[2], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].emit.data[0], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].emit.data[1], 4 * m.eps);
+    try std.testing.expectApproxEqRel(0.0, scene[1].emit.data[2], 4 * m.eps);
     try std.testing.expectEqual(geom.Material.specular, scene[1].mtrl);
 }

@@ -54,8 +54,8 @@ fn dispatchRender(
 }
 
 const BounceNode = struct {
-    brdf: m.Vec3 = m.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
-    emit: m.Vec3 = m.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 },
+    brdf: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
+    emit: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     c_th: f32 = 0.0,
     prob: f32 = 1.0,
 };
@@ -131,7 +131,7 @@ fn renderPixels(
         const pixel: *io.Pixel = &frame_buffer[pixel_i];
 
         var sample_i: usize = 0;
-        var pixel_color: m.Vec3 = m.Vec3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+        var pixel_color: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } };
         while (sample_i < settings.num_samples) : (sample_i += 1) {
             stack_i = 0;
 
@@ -156,7 +156,7 @@ fn renderPixels(
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = m.mul(
                                     intersect.refl,
-                                    m.div(1.0, m.dot(new_ray, intersect.norm)),
+                                    m.sdiv(1.0, m.dot(new_ray, intersect.norm)),
                                 ),
                                 .emit = intersect.emit,
                                 .c_th = m.dot(new_ray, intersect.norm),
@@ -191,12 +191,12 @@ fn renderPixels(
 
         // set final color value
 
-        pixel_color.x = m.sanitizeNan(m.clamp(pixel_color.x, 0.0, 1.0)); // pixel_color is NaN on
-        pixel_color.y = m.sanitizeNan(m.clamp(pixel_color.y, 0.0, 1.0)); // rare occasion ...
-        pixel_color.z = m.sanitizeNan(m.clamp(pixel_color.z, 0.0, 1.0)); //   don't know why yet...
-        pixel.r = @intFromFloat(pixel_color.x * 255.0);
-        pixel.g = @intFromFloat(pixel_color.y * 255.0);
-        pixel.b = @intFromFloat(pixel_color.z * 255.0);
+        pixel_color.data[0] = m.sanitizeNan(m.clamp(pixel_color.data[0], 0.0, 1.0)); // NaN on rare
+        pixel_color.data[1] = m.sanitizeNan(m.clamp(pixel_color.data[1], 0.0, 1.0)); // occasion ...
+        pixel_color.data[2] = m.sanitizeNan(m.clamp(pixel_color.data[2], 0.0, 1.0)); // not sure why
+        pixel.r = @intFromFloat(pixel_color.data[0] * 255.0);
+        pixel.g = @intFromFloat(pixel_color.data[1] * 255.0);
+        pixel.b = @intFromFloat(pixel_color.data[2] * 255.0);
     }
 }
 
