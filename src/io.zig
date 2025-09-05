@@ -3,8 +3,10 @@ const std = @import("std");
 const m = @import("math.zig");
 const geom = @import("geometry.zig");
 
-const stdout = std.io.getStdOut().writer();
-const stderr = std.io.getStdErr().writer();
+var stdout_writer = std.fs.File.stdout().writer(&.{});
+var stderr_writer = std.fs.File.stderr().writer(&.{});
+const stdout = &stdout_writer.interface;
+const stderr = &stderr_writer.interface;
 
 pub const Settings = struct {
     thread_count: usize = 1,
@@ -94,6 +96,7 @@ fn splitAtDelimiter(str: []u8, delim: u8) ParsingError![2][]u8 {
 }
 
 pub fn readInput(
+    allocator: std.mem.Allocator,
     file_name: []const u8,
     settings: *Settings,
     scene: *std.ArrayList(geom.Object),
@@ -109,10 +112,13 @@ pub fn readInput(
     const fID: std.fs.File = try cwd.openFile(file_name, .{});
     defer fID.close();
 
-    var read_buffer: [1 << 10]u8 = undefined;
+    var read_buffer: [1 << 12]u8 = undefined;
+    var file_reader = fID.reader(&read_buffer);
+    const reader = &file_reader.interface;
+
     var line_num: usize = 1;
     var next_line_normal: bool = false;
-    while (try fID.reader().readUntilDelimiterOrEof(&read_buffer, '\n')) |line| : (line_num += 1) {
+    while (reader.takeDelimiterExclusive('\n')) |line| : (line_num += 1) {
         errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
 
         if (next_line_normal == true) {
@@ -130,7 +136,7 @@ pub fn readInput(
         if (mode == ParseMode.normal) {
             if (splitAtDelimiter(segment, '{')) |mode_string_dual| {
                 mode = try parseEnum(ParseMode, trimWhitespace(mode_string_dual[0]));
-                try scene.append(geom.Object{});
+                try scene.append(allocator, geom.Object{});
                 continue;
             } else |_| {}
         } else {
@@ -157,33 +163,34 @@ pub fn readInput(
                 last_object.* = try setSetting(key, val, last_object.*);
             },
         }
+    } else |_| {
     }
 }
 
 pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []const u8) !void {
     const file: std.fs.File = try std.fs.cwd().createFile(file_name, .{});
     defer file.close();
-    var buffer_wrapper = std.io.bufferedWriter(file.writer());
-    var file_writer = buffer_wrapper.writer();
 
-    try file_writer.print("P3\n", .{});
-    try file_writer.print("{d} {d}\n", .{ settings.window_w, settings.window_h });
-    try file_writer.print("255\n", .{});
+    var write_buffer: [1 << 12]u8 = undefined;
+    var file_writer = file.writer(&write_buffer);
+    const writer = &file_writer.interface;
+
+    try writer.print("P3\n", .{});
+    try writer.print("{d} {d}\n", .{ settings.window_w, settings.window_h });
+    try writer.print("255\n", .{});
     for (frame_buffer) |pixel| {
-        try file_writer.print("{d:>3} {d:>3} {d:>3}\n", .{ pixel.r, pixel.g, pixel.b });
+        try writer.print("{d:>3} {d:>3} {d:>3}\n", .{ pixel.r, pixel.g, pixel.b });
     }
-
-    try buffer_wrapper.flush();
 }
 
 // TESTS -----
 
 test "readInput --- reads an input file" {
     var settings = Settings{};
-    var scene_list = std.ArrayList(geom.Object).init(std.testing.allocator);
-    try readInput("test_data/input.txt", &settings, &scene_list);
+    var scene_list = std.ArrayList(geom.Object).empty;
+    try readInput(std.testing.allocator, "test_data/input.txt", &settings, &scene_list);
     const scene: []geom.Object = scene_list.items;
-    defer scene_list.deinit();
+    defer scene_list.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(16, settings.thread_count);
     try std.testing.expectEqual(8192, settings.num_samples);

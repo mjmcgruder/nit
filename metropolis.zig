@@ -12,8 +12,10 @@ test {
     _ = geom;
 }
 
-const stdout = std.io.getStdOut().writer();
-const stderr = std.io.getStdErr().writer();
+var stdout_writer = std.fs.File.stdout().writer(&.{});
+var stderr_writer = std.fs.File.stderr().writer(&.{});
+const stdout = &stdout_writer.interface;
+const stderr = &stderr_writer.interface;
 
 var render_timer: std.time.Timer = undefined;
 const chunk_size: usize = 1 << 11;
@@ -245,11 +247,11 @@ pub fn main() !void {
         return;
     }
 
-    var settings: io.Settings = io.Settings{};
-    var scene_list: std.ArrayList(geom.Object) = std.ArrayList(geom.Object).init(allocator);
-    try io.readInput(args[1], &settings, &scene_list);
+    var settings = io.Settings{};
+    var scene_list = std.ArrayList(geom.Object).empty;
+    try io.readInput(allocator, args[1], &settings, &scene_list);
     const scene: []geom.Object = scene_list.items;
-    defer scene_list.deinit();
+    defer scene_list.deinit(allocator);
 
     // initialization
 
@@ -262,7 +264,7 @@ pub fn main() !void {
     // initialize rays
 
     try stdout.print("  initializing rays...\n", .{});
-    const rays: []m.Vec3 = try initializePerspectiveRays(settings, allocator); // TODO: free with arena?
+    const rays: []m.Vec3 = try initializePerspectiveRays(settings, allocator);
     defer allocator.free(rays);
 
     // render diffuse reflection
