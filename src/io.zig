@@ -15,7 +15,7 @@ pub const Settings = struct {
     window_h: usize = 1080,
     camera_position: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     target_position: m.Vec3 = m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
-    up_vector: m.Vec3 = m.Vec3{ .data = .{0.0, 1.0, 0.0} },
+    up_vector: m.Vec3 = m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } },
     field_of_view: f32 = 90.0,
 };
 
@@ -119,6 +119,7 @@ pub fn readInput(
     var line_num: usize = 1;
     var next_line_normal: bool = false;
     while (reader.takeDelimiterExclusive('\n')) |line| : (line_num += 1) {
+        reader.toss(1); // pass the newline character
         errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
 
         if (next_line_normal == true) {
@@ -163,8 +164,7 @@ pub fn readInput(
                 last_object.* = try setSetting(key, val, last_object.*);
             },
         }
-    } else |_| {
-    }
+    } else |_| {}
 }
 
 pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []const u8) !void {
