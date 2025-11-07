@@ -32,11 +32,12 @@ pub const CoordinateAxes = struct {
 
 /// Generates an arbitrary set of local coordinate axes such that the input normal vector is on the
 /// z-axis, all axes are normalized, and the coordinate system is right-handed.
+/// NOTE: the input normal vector MUST be normalized for correct results
 pub fn buildCoordinateAxes(n: m.Vec3) CoordinateAxes {
     var local: CoordinateAxes = .{};
-    local.z = m.normalize(n);
+    local.z = n;
     local.y = m.normalize(m.cross(local.z, if (@abs(local.z.data[0]) < 0.9) m.unit_x else m.unit_y));
-    local.x = m.normalize(m.cross(local.y, local.z));
+    local.x = m.cross(local.y, local.z);
     return local;
 }
 
@@ -46,6 +47,7 @@ pub fn buildCoordinateAxes(n: m.Vec3) CoordinateAxes {
 /// turns random sphere point picking into random hemisphere point picking. The coordinate system
 /// for the random point picking is also arbitrarily chosen, this should not have any negative
 /// impact to my knowledge.
+/// NOTE: the input normal vector MUST be normalized for correct results
 pub fn sampleHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     const t: f32 = rng.float32() * 2.0 * std.math.pi;
     const u: f32 = rng.float32();
