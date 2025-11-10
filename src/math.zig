@@ -30,8 +30,8 @@ pub inline fn mul(a: anytype, b: anytype) Vec3 {
     return Vec3{ .data = av * bv };
 }
 
-pub inline fn sdiv(a_in: anytype, b_in: anytype) @TypeOf(a_in, b_in) {
-    return a_in / (b_in + eps);
+pub inline fn sdiv(a: anytype, b: anytype) @TypeOf(a, b) {
+    return if (b == 0.0) 0.0 else (a / b);
 }
 
 pub inline fn dot(a: Vec3, b: Vec3) f32 {

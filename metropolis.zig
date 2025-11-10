@@ -193,12 +193,9 @@ fn renderPixels(
 
         // set final color value
 
-        pixel_color.data[0] = m.sanitizeNan(m.clamp(pixel_color.data[0], 0.0, 1.0)); // NaN on rare
-        pixel_color.data[1] = m.sanitizeNan(m.clamp(pixel_color.data[1], 0.0, 1.0)); // occasion ...
-        pixel_color.data[2] = m.sanitizeNan(m.clamp(pixel_color.data[2], 0.0, 1.0)); // not sure why
-        pixel.r = @intFromFloat(pixel_color.data[0] * 255.0);
-        pixel.g = @intFromFloat(pixel_color.data[1] * 255.0);
-        pixel.b = @intFromFloat(pixel_color.data[2] * 255.0);
+        pixel.r = @intFromFloat(m.clamp(pixel_color.data[0], 0.0, 1.0) * 255.0);
+        pixel.g = @intFromFloat(m.clamp(pixel_color.data[1], 0.0, 1.0) * 255.0);
+        pixel.b = @intFromFloat(m.clamp(pixel_color.data[2], 0.0, 1.0) * 255.0);
     }
 }
 
