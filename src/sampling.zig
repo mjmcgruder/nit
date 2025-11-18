@@ -68,12 +68,16 @@ pub fn reflect(n: m.Vec3, w: m.Vec3) m.Vec3 {
 // TESTS -----
 
 test "buildLocalCoordinateAxes --- is right handed" {
-    const axes: CoordinateAxes = buildCoordinateAxes(.{ .data = .{ -1.0, 2.71, 3.14 } });
+    const axes: CoordinateAxes = buildCoordinateAxes(
+        m.normalize(.{ .data = .{ -1.0, 2.71, 3.14 } }),
+    );
     try std.testing.expectApproxEqRel(1.0, m.dot(m.cross(axes.x, axes.y), axes.z), 10 * m.eps);
 }
 
 test "buildLocalCoordinateAxes --- is normalized" {
-    const axes: CoordinateAxes = buildCoordinateAxes(.{ .data = .{ -1.0, 2.71, 3.14 } });
+    const axes: CoordinateAxes = buildCoordinateAxes(
+        m.normalize(.{ .data = .{ -1.0, 2.71, 3.14 } }),
+    );
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.x), 10 * m.eps);
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.y), 10 * m.eps);
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 10 * m.eps);
