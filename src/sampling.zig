@@ -52,8 +52,9 @@ pub fn sampleHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     const t: f32 = rng.float32() * 2.0 * std.math.pi;
     const u: f32 = rng.float32();
     const r: f32 = @sqrt(1.0 - u * u);
-    const x: f32 = r * @cos(t);
-    const y: f32 = r * @sin(t);
+    const sc: m.SinCos = m.sincos_approx(t);
+    const x: f32 = r * sc.c;
+    const y: f32 = r * sc.s;
     const z: f32 = u;
     const local: CoordinateAxes = buildCoordinateAxes(n);
     return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));

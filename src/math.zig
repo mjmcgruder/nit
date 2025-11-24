@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Vec3 = struct { data: @Vector(3, f32) = @Vector(3, f32){0.0, 0.0, 0.0} };
+pub const Vec3 = struct { data: @Vector(3, f32) = @Vector(3, f32){ 0.0, 0.0, 0.0 } };
 
 pub const unit_x: Vec3 = Vec3{ .data = .{ 1.0, 0.0, 0.0 } };
 pub const unit_y: Vec3 = Vec3{ .data = .{ 0.0, 1.0, 0.0 } };
@@ -62,7 +62,78 @@ pub inline fn sanitizeNan(a: f32) f32 {
     return if (std.math.isNan(a)) 0.0 else a;
 }
 
+pub const SinCos = struct {
+    s: f32,
+    c: f32,
+};
+
+pub inline fn sincos_exact(x: f32) SinCos {
+    return .{.s = @sin(x), .c = @cos(x)};
+}
+
+pub inline fn sincos_approx(x: f32) SinCos {
+    const twopi: f32 = comptime 2.0 * std.math.pi;
+    const inv_twopi: f32 = comptime 1.0 / twopi;
+
+    const table = comptime init_table: {
+        var sincos_table: [1 << 9]SinCos = undefined;
+
+        const dtheta: f32 = twopi / @as(f32, @floatFromInt(sincos_table.len));
+        var theta: f32 = 0.0;
+        for (&sincos_table) |*val| {
+            val.s = @sin(theta);
+            val.c = @cos(theta);
+            theta += dtheta;
+        }
+
+        break :init_table sincos_table;
+    };
+
+    const table_index: usize = @intFromFloat(x * inv_twopi * @as(f32, @floatFromInt(table.len)));
+    return table[table_index];
+}
+
 // TESTS -----
+
+test "sincos --- sin cos quadrant 0" {
+    const x: f32 = std.math.pi / 8.0;
+    var s: f32 = undefined;
+    var c: f32 = undefined;
+    sincos_approx(x, &s, &c);
+    std.debug.print("\n", .{});
+    std.debug.print("{} {}\n", .{ s, @sin(x) });
+    std.debug.print("{} {}\n", .{ c, @cos(x) });
+}
+
+test "sincos_approx --- sin cos quadrant 1" {
+    const x: f32 = 3.0 * (std.math.pi / 8.0);
+    var s: f32 = undefined;
+    var c: f32 = undefined;
+    sincos_approx(x, &s, &c);
+    std.debug.print("\n", .{});
+    std.debug.print("{} {}\n", .{ s, @sin(x) });
+    std.debug.print("{} {}\n", .{ c, @cos(x) });
+}
+
+test "sincos_approx --- sin cos quadrant 2" {
+    const x: f32 = 9.0 * (std.math.pi / 8.0);
+    var s: f32 = undefined;
+    var c: f32 = undefined;
+    sincos_approx(x, &s, &c);
+    std.debug.print("\n", .{});
+    std.debug.print("{} {}\n", .{ s, @sin(x) });
+    std.debug.print("{} {}\n", .{ c, @cos(x) });
+}
+
+test "sincos_approx --- sin cos quadrant 3" {
+    const x: f32 = 11.0 * (std.math.pi / 8.0);
+    var s: f32 = undefined;
+    var c: f32 = undefined;
+    sincos_approx(x, &s, &c);
+    std.debug.print("\n", .{});
+    std.debug.print("{} {}\n", .{ s, @sin(x) });
+    std.debug.print("{} {}\n", .{ c, @cos(x) });
+}
 
 test "add --- vector-vector" {
     const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
