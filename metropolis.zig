@@ -79,20 +79,19 @@ fn printRenderProgress(current_time: u64, total_pixels: u64) !void {
 
 fn intersectScene(ro: m.Vec3, rd: m.Vec3, scene: []const geom.Object) ?geom.IntersectResult {
     var intersect = geom.IntersectResult{
-        .dist = std.math.floatMax(f32),
-        .norm = undefined,
+        .geom = .{ .dist = std.math.floatMax(f32), .norm = undefined },
         .refl = undefined,
         .emit = undefined,
         .mtrl = undefined,
     };
-    for (scene) |*object| {
-        if (object.intersect(ro, rd)) |result| {
-            if (result.dist < intersect.dist) {
+    for (scene) |object| {
+        if (geom.intersectRayObject(.{.dir = ro, .org = rd}, object)) |result| {
+            if (result.geom.dist < intersect.geom.dist) {
                 intersect = result;
             }
         }
     }
-    return if (intersect.dist == std.math.floatMax(f32)) null else intersect;
+    return if (intersect.geom.dist == std.math.floatMax(f32)) null else intersect;
 }
 
 fn renderPixels(
@@ -145,28 +144,28 @@ fn renderPixels(
                     var new_ray: m.Vec3 = undefined;
                     switch (intersect.mtrl) {
                         geom.Material.diffuse => {
-                            new_ray = smp.sampleHemisphere(intersect.norm, rng);
+                            new_ray = smp.sampleHemisphere(intersect.geom.norm, rng);
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = m.mul(intersect.refl, 1.0 / std.math.pi),
                                 .emit = intersect.emit,
-                                .c_th = m.dot(new_ray, intersect.norm),
+                                .c_th = m.dot(new_ray, intersect.geom.norm),
                                 .prob = 1.0 / (2.0 * std.math.pi),
                             };
                         },
                         geom.Material.specular => {
-                            new_ray = smp.reflect(intersect.norm, m.mul(rd, -1.0));
+                            new_ray = smp.reflect(intersect.geom.norm, m.mul(rd, -1.0));
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = m.mul(
                                     intersect.refl,
-                                    m.sdiv(1.0, m.dot(new_ray, intersect.norm)),
+                                    m.sdiv(1.0, m.dot(new_ray, intersect.geom.norm)),
                                 ),
                                 .emit = intersect.emit,
-                                .c_th = m.dot(new_ray, intersect.norm),
+                                .c_th = m.dot(new_ray, intersect.geom.norm),
                                 .prob = 1.0,
                             };
                         },
                     }
-                    ro = m.add(ro, m.mul(rd, intersect.dist));
+                    ro = m.add(ro, m.mul(rd, intersect.geom.dist));
                     rd = new_ray;
                 } else {
                     break;
@@ -207,6 +206,7 @@ fn initializePerspectiveRays(settings: io.Settings, allocator: std.mem.Allocator
     const b: m.Vec3 = m.normalize(m.cross(t, settings.up_vector)); // horizontal vector
     const v: m.Vec3 = m.normalize(m.cross(b, t)); // vertical vector
 
+    // TODO: fix this to use degrees for FOV
     const hw: f32 = @tan(0.5 * settings.field_of_view); // view port half width and height at distance 1
     const hh: f32 = hw * ((window_h_flt - 1.0) / (window_w_flt - 1.0));
 
@@ -244,11 +244,28 @@ pub fn main() !void {
         return;
     }
 
-    var settings = io.Settings{};
-    var scene_list = std.ArrayList(geom.Object).empty;
-    try io.readInput(allocator, args[1], &settings, &scene_list);
-    const scene: []geom.Object = scene_list.items;
-    defer scene_list.deinit(allocator);
+    // var settings = io.Settings{};
+    // var scene_list = std.ArrayList(geom.Object).empty;
+    // try io.readInput(allocator, args[1], &settings, &scene_list);
+    // const scene: []geom.Object = scene_list.items;
+    // defer scene_list.deinit(allocator);
+
+    const settings = io.Settings{};
+    var scene_list = [_]geom.Object{
+        geom.Object{
+            .geom = geom.GeometryType{ .sphere = .{ .cntr = .{ .data = .{1.0, 0.0, 0.0} }, .rdus = 0.2 } },
+            .refl = .{ .data = .{1.0, 1.0, 1.0} },
+            .emit = .{ .data = .{1.0, 1.0, 1.0} },
+            .mtrl = geom.Material.diffuse,
+        },
+        // geom.Object{
+        //     .geom = geom.GeometryType{ .sphere = .{ .cntr = .{ 1.0, 0.0, 0.0 }, .rdus = 0.2 } },
+        //     .refl = .{ 1.0, 1.0, 1.0 },
+        //     .emit = .{ 1.0, 1.0, 1.0 },
+        //     .mtrl = geom.Material.diffuse,
+        // },
+    };
+    const scene: []geom.Object = &scene_list;
 
     // initialization
 

@@ -11,10 +11,10 @@ const stderr = &stderr_writer.interface;
 pub const Settings = struct {
     thread_count: usize = 1,
     num_samples: usize = 32,
-    window_w: usize = 1920,
-    window_h: usize = 1080,
+    window_w: usize = 640,
+    window_h: usize = 480,
     camera_position: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
-    target_position: m.Vec3 = m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
+    target_position: m.Vec3 = m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } },
     up_vector: m.Vec3 = m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } },
     field_of_view: f32 = 90.0,
 };
