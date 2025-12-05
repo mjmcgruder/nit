@@ -85,7 +85,7 @@ fn intersectScene(ro: m.Vec3, rd: m.Vec3, scene: []const geom.Object) ?geom.Inte
         .mtrl = undefined,
     };
     for (scene) |object| {
-        if (geom.intersectRayObject(.{.dir = ro, .org = rd}, object)) |result| {
+        if (geom.intersectRayObject(.{.org = ro, .dir = rd}, object)) |result| {
             if (result.geom.dist < intersect.geom.dist) {
                 intersect = result;
             }
@@ -206,13 +206,13 @@ fn initializePerspectiveRays(settings: io.Settings, allocator: std.mem.Allocator
     const b: m.Vec3 = m.normalize(m.cross(t, settings.up_vector)); // horizontal vector
     const v: m.Vec3 = m.normalize(m.cross(b, t)); // vertical vector
 
-    // TODO: fix this to use degrees for FOV
-    const hw: f32 = @tan(0.5 * settings.field_of_view); // view port half width and height at distance 1
-    const hh: f32 = hw * ((window_h_flt - 1.0) / (window_w_flt - 1.0));
+    // view port half width and height at distance 1
+    const hw: f32 = @tan(0.5 * settings.field_of_view * (std.math.pi / 180.0));
+    const hh: f32 = hw * (window_h_flt / window_w_flt);
 
     const ul: m.Vec3 = m.add(m.sub(t, m.mul(hw, b)), m.mul(hh, v)); // upper left point
-    const inc_w: f32 = (2.0 * hw) / (window_w_flt - 1.0);
-    const inc_h: f32 = (2.0 * hh) / (window_h_flt - 1.0);
+    const inc_w: f32 = (2.0 * hw) / (window_w_flt);
+    const inc_h: f32 = (2.0 * hh) / (window_h_flt);
 
     const rays: []m.Vec3 = try allocator.alloc(m.Vec3, settings.window_w * settings.window_h);
     for (rays, 0..) |*item, i| {
@@ -221,7 +221,7 @@ fn initializePerspectiveRays(settings: io.Settings, allocator: std.mem.Allocator
         const r_flt: f32 = @floatFromInt(r);
         const c_flt: f32 = @floatFromInt(c);
         item.* = m.normalize(
-            m.add(ul, m.add(m.mul(-inc_h * r_flt, v), m.mul(inc_w * c_flt, b))),
+            m.add(ul, m.add(m.mul(-inc_h * (r_flt + 0.5), v), m.mul(inc_w * (c_flt + 0.5), b))),
         );
     }
 

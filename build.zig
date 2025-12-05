@@ -6,11 +6,15 @@ pub fn build(b: *std.Build) !void {
 
     // options
 
-    const profile: bool = b.option(
+    const profile: ?bool = b.option(
         bool,
         "profile",
         "keep debug symbols + frame pointer",
-    ) orelse false;
+    );
+    var not_profile: ?bool = null;
+    if (profile) |val| {
+        not_profile = !val;
+    }
 
     const use_llvm: ?bool = b.option(
         bool,
@@ -28,8 +32,8 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("metropolis.zig"),
         .target = target_options,
         .optimize = optimization_options,
-        .strip = !profile,
-        .omit_frame_pointer = !profile,
+        .strip = not_profile,
+        .omit_frame_pointer = not_profile,
     });
 
     // main executable

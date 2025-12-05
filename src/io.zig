@@ -181,6 +181,8 @@ pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []
     for (frame_buffer) |pixel| {
         try writer.print("{d:>3} {d:>3} {d:>3}\n", .{ pixel.r, pixel.g, pixel.b });
     }
+
+    try writer.flush();
 }
 
 // TESTS -----
