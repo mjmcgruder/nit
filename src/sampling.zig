@@ -52,7 +52,7 @@ pub fn sampleHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     const t: f32 = rng.float32() * 2.0 * std.math.pi;
     const u: f32 = rng.float32();
     const r: f32 = @sqrt(1.0 - u * u);
-    const sc: m.SinCos = m.sincos_approx(t);
+    const sc: m.SinCos = m.sincos_exact(t);
     const x: f32 = r * sc.c;
     const y: f32 = r * sc.s;
     const z: f32 = u;
@@ -123,5 +123,5 @@ test "reflect --- equal dot product" {
     const n: m.Vec3 = m.normalize(.{ .data = .{ -1.0, -1.0, -1.0 } });
     const w: m.Vec3 = sampleHemisphere(n, &rng);
     const r: m.Vec3 = reflect(n, w);
-    try std.testing.expectApproxEqRel(m.dot(n, w), m.dot(n, r), 4 * m.eps);
+    try std.testing.expectApproxEqAbs(m.dot(n, w), m.dot(n, r), 4 * m.eps);
 }

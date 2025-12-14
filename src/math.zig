@@ -1,6 +1,82 @@
 const std = @import("std");
 
-pub const Vec3 = struct { data: @Vector(3, f32) = @Vector(3, f32){ 0.0, 0.0, 0.0 } };
+pub const Vec3 = struct {
+    data: @Vector(3, f32) = @Vector(3, f32){ 0.0, 0.0, 0.0 },
+};
+
+pub const Vec4 = struct {
+    data: @Vector(4, f32) = @Vector(4, f32){ 0.0, 0.0, 0.0, 0.0 },
+};
+
+pub const Mat4 = struct {
+    data: [4]@Vector(4, f32) = [1]@Vector(4, f32){.{ 0.0, 0.0, 0.0, 0.0 }} ** 4,
+};
+
+pub fn toVec4(src: Vec3) Vec4 {
+    return Vec4{ .data = .{ src[0], src[1], src[2], 0.0 } };
+}
+
+pub fn toHomogeneousPos(src: Vec3) Vec4 {
+    return Vec4{ .data = .{ src[0], src[1], src[2], 1.0 } };
+}
+
+pub fn toHomogeneousDir(src: Vec3) Vec4 {
+    return toVec4(src);
+}
+
+pub noinline fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
+    var res: Vec4 = undefined;
+    for (0..4) |r| {
+        res.data[r] = @reduce(.Add, mat.data[r] * vec.data);
+    }
+    return res;
+}
+
+pub noinline fn matmul4(a: Mat4, b: Mat4) Mat4 {
+    var res: Mat4 = undefined;
+    for (0..4) |c| {
+        const col: Vec4 = .{ .data = .{ b.data[0][c], b.data[1][c], b.data[2][c], b.data[3][c] } };
+        for (0..4) |r| {
+            res.data[r][c] = @reduce(.Add, a.data[r] * col.data);
+        }
+    }
+    return res;
+}
+
+/// adapted from:
+///   https://fgiesen.wordpress.com/2013/07/09/simd-transposes-1/
+pub noinline fn mattnp4(mat: Mat4) Mat4 {
+    const a0 = @shuffle(f32, mat.data[0], mat.data[1], @Vector(4, i32){ 0, -1, 1, -2 });
+    const a1 = @shuffle(f32, mat.data[0], mat.data[1], @Vector(4, i32){ 2, -3, 3, -4 });
+    const a2 = @shuffle(f32, mat.data[2], mat.data[3], @Vector(4, i32){ 0, -1, 1, -2 });
+    const a3 = @shuffle(f32, mat.data[2], mat.data[3], @Vector(4, i32){ 2, -3, 3, -4 });
+    return .{ .data = .{
+        @shuffle(f32, a0, a2, @Vector(4, i32){ 0, 1, -1, -2 }),
+        @shuffle(f32, a0, a2, @Vector(4, i32){ 2, 3, -3, -4 }),
+        @shuffle(f32, a1, a3, @Vector(4, i32){ 0, 1, -1, -2 }),
+        @shuffle(f32, a1, a3, @Vector(4, i32){ 2, 3, -3, -4 }),
+    } };
+}
+
+/// adapted from:
+///   https://lxjk.github.io/2017/09/03/Fast-4x4-Matrix-Inverse-with-SSE-SIMD-Explained.html
+/// This function only returns the correct inverse for normalized (no scaling) 4x4 transformation
+/// matrices. Translation may be arbitrary. Bottom row values must be zero, except the final value
+/// which should be 1.
+pub fn invertTransform(mat: Mat4) Mat4 {
+    // TODO: assert this is actually a normalized transform in non-release / safe builds?
+    const tnp: Mat4 = mattnp4(mat);
+    var inv: Mat4 = tnp;
+    const trs: @Vector(4, f32) = .{ tnp.data[3][0], tnp.data[3][1], tnp.data[3][2], 0.0 };
+    // TODO: I think you can still overwrite tnp here b/c last entry set zero in translation
+    inv.data[0][3] = -@reduce(.Add, tnp.data[0] * trs);
+    inv.data[1][3] = -@reduce(.Add, tnp.data[1] * trs);
+    inv.data[2][3] = -@reduce(.Add, tnp.data[2] * trs);
+    inv.data[3][0] = 0.0;
+    inv.data[3][1] = 0.0;
+    inv.data[3][2] = 0.0;
+    return inv;
+}
 
 pub const unit_x: Vec3 = Vec3{ .data = .{ 1.0, 0.0, 0.0 } };
 pub const unit_y: Vec3 = Vec3{ .data = .{ 0.0, 1.0, 0.0 } };
@@ -68,15 +144,17 @@ pub const SinCos = struct {
 };
 
 pub inline fn sincos_exact(x: f32) SinCos {
-    return .{.s = @sin(x), .c = @cos(x)};
+    return .{ .s = @sin(x), .c = @cos(x) };
 }
 
 pub inline fn sincos_approx(x: f32) SinCos {
+    @setEvalBranchQuota(1 << 12);
+
     const twopi: f32 = comptime 2.0 * std.math.pi;
     const inv_twopi: f32 = comptime 1.0 / twopi;
 
     const table = comptime init_table: {
-        var sincos_table: [1 << 9]SinCos = undefined;
+        var sincos_table: [1 << 11]SinCos = undefined;
 
         const dtheta: f32 = twopi / @as(f32, @floatFromInt(sincos_table.len));
         var theta: f32 = 0.0;
@@ -94,46 +172,6 @@ pub inline fn sincos_approx(x: f32) SinCos {
 }
 
 // TESTS -----
-
-test "sincos --- sin cos quadrant 0" {
-    const x: f32 = std.math.pi / 8.0;
-    var s: f32 = undefined;
-    var c: f32 = undefined;
-    sincos_approx(x, &s, &c);
-    std.debug.print("\n", .{});
-    std.debug.print("{} {}\n", .{ s, @sin(x) });
-    std.debug.print("{} {}\n", .{ c, @cos(x) });
-}
-
-test "sincos_approx --- sin cos quadrant 1" {
-    const x: f32 = 3.0 * (std.math.pi / 8.0);
-    var s: f32 = undefined;
-    var c: f32 = undefined;
-    sincos_approx(x, &s, &c);
-    std.debug.print("\n", .{});
-    std.debug.print("{} {}\n", .{ s, @sin(x) });
-    std.debug.print("{} {}\n", .{ c, @cos(x) });
-}
-
-test "sincos_approx --- sin cos quadrant 2" {
-    const x: f32 = 9.0 * (std.math.pi / 8.0);
-    var s: f32 = undefined;
-    var c: f32 = undefined;
-    sincos_approx(x, &s, &c);
-    std.debug.print("\n", .{});
-    std.debug.print("{} {}\n", .{ s, @sin(x) });
-    std.debug.print("{} {}\n", .{ c, @cos(x) });
-}
-
-test "sincos_approx --- sin cos quadrant 3" {
-    const x: f32 = 11.0 * (std.math.pi / 8.0);
-    var s: f32 = undefined;
-    var c: f32 = undefined;
-    sincos_approx(x, &s, &c);
-    std.debug.print("\n", .{});
-    std.debug.print("{} {}\n", .{ s, @sin(x) });
-    std.debug.print("{} {}\n", .{ c, @cos(x) });
-}
 
 test "add --- vector-vector" {
     const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
@@ -275,10 +313,144 @@ test "cross --- make orthogonal axes" {
 
 test "mag --- unit circle" {
     const a = Vec3{ .data = .{ 1.0 / 2.0, @sqrt(3.0) / 2.0, 0.0 } };
-    try std.testing.expectApproxEqRel(1.0, mag(a), 4 * eps);
+    try std.testing.expectApproxEqAbs(1.0, mag(a), 4 * eps);
 }
 
 test "normalize --- makes magnitude 1" {
     const a = Vec3{ .data = .{ 1.0, 1.0, 1.0 } };
-    try std.testing.expectApproxEqRel(1.0, mag(normalize(a)), 4 * eps);
+    try std.testing.expectApproxEqAbs(1.0, mag(normalize(a)), 4 * eps);
+}
+
+test "sincos --- sin cos quadrant 0" {
+    const x: f32 = std.math.pi / 8.0;
+    const sincos = sincos_approx(x);
+    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
+    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
+}
+
+test "sincos_approx --- sin cos quadrant 1" {
+    const x: f32 = 3.0 * (std.math.pi / 8.0);
+    const sincos = sincos_approx(x);
+    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
+    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
+}
+
+test "sincos_approx --- sin cos quadrant 2" {
+    const x: f32 = 9.0 * (std.math.pi / 8.0);
+    const sincos = sincos_approx(x);
+    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
+    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
+}
+
+test "sincos_approx --- sin cos quadrant 3" {
+    const x: f32 = 11.0 * (std.math.pi / 8.0);
+    const sincos = sincos_approx(x);
+    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
+    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
+}
+
+test "Mat4 --- zero initializes by default" {
+    const mat: Mat4 = .{};
+    for (mat.data) |row| {
+        try std.testing.expectEqual(row[0], 0.0);
+        try std.testing.expectEqual(row[1], 0.0);
+        try std.testing.expectEqual(row[2], 0.0);
+        try std.testing.expectEqual(row[3], 0.0);
+    }
+}
+
+test "matvec4 --- identity" {
+    const mat: Mat4 = .{ .data = .{
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } };
+    const vec: Vec4 = .{ .data = .{ 1.4, 2.7, 3.1, 6.2 } };
+
+    const vec_new: Vec4 = matvec4(mat, vec);
+
+    for (0..4) |i| {
+        try std.testing.expectEqual(vec.data[i], vec_new.data[i]);
+    }
+}
+
+test "matvec4 --- axis flip" {
+    const mat: Mat4 = .{ .data = .{
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } };
+    const vec: Vec4 = .{ .data = .{ 1.0, 0.0, 0.0, 0.0 } };
+
+    const vec_new: Vec4 = matvec4(mat, vec);
+
+    try std.testing.expectEqual(0.0, vec_new.data[0]);
+    try std.testing.expectEqual(1.0, vec_new.data[1]);
+    try std.testing.expectEqual(0.0, vec_new.data[2]);
+    try std.testing.expectEqual(0.0, vec_new.data[3]);
+}
+
+test "mattnp4 --- integer matrix" {
+    const mat: Mat4 = .{ .data = .{
+        .{ 0, 9, 5, 3 },
+        .{ 0, 1, 2, 2 },
+        .{ 7, 1, 2, 3 },
+        .{ 1, 8, 2, 4 },
+    } };
+
+    const tnp: Mat4 = mattnp4(mat);
+
+    for (0..4) |r| {
+        for (0..4) |c| {
+            try std.testing.expectEqual(mat.data[c][r], tnp.data[r][c]);
+        }
+    }
+}
+
+test "matvec4 --- orthonormal, transpose, identity" {
+    const mat: Mat4 = .{ .data = .{
+        .{ 0, 0, 1, 0 },
+        .{ 0, 1, 0, 0 },
+        .{ 1, 0, 0, 0 },
+        .{ 0, 0, 0, 1 },
+    } };
+
+    const inv: Mat4 = mattnp4(mat);
+
+    const test_identity: Mat4 = matmul4(mat, inv);
+
+    for (0..4) |r| {
+        for (0..4) |c| {
+            if (r == c) {
+                try std.testing.expectApproxEqAbs(1.0, test_identity.data[r][c], eps);
+            } else {
+                try std.testing.expectApproxEqAbs(0.0, test_identity.data[r][c], eps);
+            }
+        }
+    }
+}
+
+test "invertTransform --- recovers identity" {
+    const mat: Mat4 = .{ .data = .{
+        .{ 0.0, 1.0, 0.0, 0.2 },
+        .{ 0.0, 0.0, 1.0, 7.0 },
+        .{ 1.0, 0.0, 0.0, 2.7 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } };
+
+    const inv: Mat4 = invertTransform(mat);
+
+    const test_identity: Mat4 = matmul4(mat, inv);
+
+    for (0..4) |r| {
+        for (0..4) |c| {
+            if (r == c) {
+                try std.testing.expectApproxEqAbs(1.0, test_identity.data[r][c], eps);
+            } else {
+                try std.testing.expectApproxEqAbs(0.0, test_identity.data[r][c], eps);
+            }
+        }
+    }
 }
