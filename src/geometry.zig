@@ -3,13 +3,16 @@ const std = @import("std");
 const m = @import("math.zig");
 
 pub const Ray = struct {
-    org: m.Vec3,
-    dir: m.Vec3,
+    o: m.Vec3,
+    d: m.Vec3,
 };
 
 pub const Sphere = struct {
-    cntr: m.Vec3,
-    rdus: f32,
+    r: f32,
+};
+
+pub const Box = struct {
+    size: m.Vec3,
 };
 
 const IntersectResultRayGeom = struct {
@@ -18,20 +21,33 @@ const IntersectResultRayGeom = struct {
 };
 
 fn intersectRaySphere(ray: Ray, sphere: Sphere) ?IntersectResultRayGeom {
-    const oc: m.Vec3 = m.sub(ray.org, sphere.cntr);
-    const b: f32 = m.dot(oc, ray.dir);
-    const qc: m.Vec3 = m.sub(oc, m.mul(b, ray.dir));
-    const h: f32 = sphere.rdus * sphere.rdus - m.dot(qc, qc);
-    if (h < 0.0) // closest ray point is outside sphere
-        return null;
-    const t: f32 = -b - @sqrt(h);
-    if (t <= 0.0) // intersection is behind the ray origin
-        return null;
+    const roh: f32 = m.dot(ray.o, ray.d); // ray origin to half-chord dist
+    const woc: m.Vec3 = m.sub(ray.o, m.mul(roh, ray.d)); // world origin to chord vec
+    const hsq: f32 = sphere.r * sphere.r - m.dot(woc, woc);
+    // closest ray point is outside sphere
+    if (hsq < 0.0) return null;
+    const seh: f32 = @sqrt(hsq); // sphere edge to half-chord distance
+    const tn: f32 = -roh - seh; // near
+    const tf: f32 = -roh + seh; // far
+    // sphere is behind ray origin
+    if (tf < 0.0) return null;
+    // ray origin is inside sphere
+    if (tn < 0.0) {
+        return IntersectResultRayGeom{
+            .dist = tf,
+            .norm = m.mul(m.mul(-1.0, m.add(ray.o, m.mul(ray.d, tf))), m.sdiv(1.0, sphere.r)),
+        };
+    }
+    // sphere is ahead of ray origin
     return IntersectResultRayGeom{
-        .dist = t,
-        .norm = m.normalize(m.sub(m.add(ray.org, m.mul(ray.dir, t)), sphere.cntr)),
+        .dist = tn, // note normalization below is simple since the vector has magnitude radius
+        .norm = m.mul(m.add(ray.o, m.mul(ray.d, tn)), m.sdiv(1.0, sphere.r)),
     };
 }
+
+// fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
+//
+// }
 
 pub const GeometryType = union(enum) {
     sphere: Sphere,
@@ -72,21 +88,38 @@ pub fn intersectRayObject(ray: Ray, obj: Object) ?IntersectResult {
 
 // TESTS -----
 
-// test "Object.intersect --- intersection ahead" {
-//     const sphere: Object = .{ .cntr = .{ .data = .{ 1.0, 0.0, 0.0 } }, .rdus = 0.1 };
-//     const ro: m.Vec3 = .{ .data = .{ 0.0, 0.0, 0.0 } };
-//     const rd: m.Vec3 = .{ .data = .{ 1.0, 0.0, 0.0 } };
-//     const intersect: IntersectResult = sphere.intersect(ro, rd).?;
-//     try std.testing.expectApproxEqAbs(0.9, intersect.dist, 10 * m.eps);
-//     try std.testing.expectApproxEqAbs(-1.0, intersect.norm.data[0], 10 * m.eps);
-//     try std.testing.expectApproxEqAbs(0.0, intersect.norm.data[1], 10 * m.eps);
-//     try std.testing.expectApproxEqAbs(0.0, intersect.norm.data[2], 10 * m.eps);
-// }
-//
-// test "Object.intersect --- intersection behind (miss)" {
-//     const sphere: Object = .{ .cntr = .{ .data = .{ 1.0, 0.0, 0.0 } }, .rdus = 0.1 };
-//     const ro: m.Vec3 = .{ .data = .{ 0.0, 0.0, 0.0 } };
-//     const rd: m.Vec3 = .{ .data = .{ -1.0, 0.0, 0.0 } };
-//     const intersect: IntersectResult = sphere.intersect(ro, rd) orelse .{ .dist = 42.0 };
-//     try std.testing.expectEqual(42.0, intersect.dist);
-// }
+test "intersectRaySphere --- sphere ahead" {
+    const ray: Ray = .{ .o = .{ .data = .{ -2.0, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const sphere: Sphere = .{ .r = 1.0 };
+    if (intersectRaySphere(ray, sphere)) |result| {
+        try std.testing.expectApproxEqAbs(1.0, result.dist, 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+    } else {
+        try std.testing.expect(false);
+    }
+}
+
+test "intersectRaySphere --- ray origin inside sphere" {
+    const ray: Ray = .{ .o = .{ .data = .{ -0.5, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const sphere: Sphere = .{ .r = 1.0 };
+    if (intersectRaySphere(ray, sphere)) |result| {
+        try std.testing.expectApproxEqAbs(1.5, result.dist, 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+    } else {
+        try std.testing.expect(false);
+    }
+}
+
+test "intersectRaySphere --- sphere behind ray origin" {
+    const ray: Ray = .{ .o = .{ .data = .{ 1.5, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const sphere: Sphere = .{ .r = 1.0 };
+    if (intersectRaySphere(ray, sphere)) |_| {
+        try std.testing.expect(false);
+    } else {
+        try std.testing.expect(true);
+    }
+}
