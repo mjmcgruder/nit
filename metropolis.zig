@@ -252,18 +252,30 @@ pub fn main() !void {
 
     const settings = io.Settings{};
     var scene_list = [_]geom.Object{
-        // geom.Object{
-        //     .geom = geom.GeometryType{ .sphere = .{ .cntr = .{ .data = .{ 0.7, 0.0, -0.3 } }, .rdus = 0.2 } },
-        //     .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-        //     .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
-        //     .mtrl = geom.Material.diffuse,
-        // },
-        // geom.Object{
-        //     .geom = geom.GeometryType{ .sphere = .{ .cntr = .{ .data = .{ 0.7, 0.0, 0.3 } }, .rdus = 0.2 } },
-        //     .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
-        //     .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-        //     .mtrl = geom.Material.diffuse,
-        // },
+        geom.Object{
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
+            .itfm = m.invertTransform(.{ .data = .{
+                .{ 1.0, 0.0, 0.0, 0.0 },
+                .{ 0.0, 1.0, 0.0, 0.0 },
+                .{ 0.0, 0.0, 1.0, 0.0 },
+                .{ 0.0, 0.0, 0.0, 1.0 },
+            } }),
+            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
+        geom.Object{
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
+            .itfm = m.invertTransform(.{ .data = .{
+                .{ 1.0, 0.0, 0.0, 0.0 },
+                .{ 0.0, 1.0, 0.0, 0.0 },
+                .{ 0.0, 0.0, 1.0, 0.4 },
+                .{ 0.0, 0.0, 0.0, 1.0 },
+            } }),
+            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
     };
     const scene: []geom.Object = &scene_list;
 

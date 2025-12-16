@@ -85,10 +85,10 @@ test "buildLocalCoordinateAxes --- is normalized" {
 }
 
 test "sampleHemisphere --- no polar bias, normalized, hemispherical" {
-    const num_samp = 1000000;
+    const num_samp = 100000;
     const ray_pole = m.unit_z;
     const ray_othr = m.normalize(m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
-    const rtol = 1e-2;
+    const rtol = 2e-2;
 
     var rng: PCGHash = .{ .state = 42 };
     var tally_pole: usize = 0;

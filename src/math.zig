@@ -9,22 +9,31 @@ pub const Vec4 = struct {
 };
 
 pub const Mat4 = struct {
-    data: [4]@Vector(4, f32) = [1]@Vector(4, f32){.{ 0.0, 0.0, 0.0, 0.0 }} ** 4,
+    data: [4]@Vector(4, f32) = .{
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    },
 };
 
+pub fn toVec3(src: Vec4) Vec3 {
+    return Vec3{ .data = .{ src.data[0], src.data[1], src.data[2]} };
+}
+
 pub fn toVec4(src: Vec3) Vec4 {
-    return Vec4{ .data = .{ src[0], src[1], src[2], 0.0 } };
+    return Vec4{ .data = .{ src.data[0], src.data[1], src.data[2], 0.0 } };
 }
 
 pub fn toHomogeneousPos(src: Vec3) Vec4 {
-    return Vec4{ .data = .{ src[0], src[1], src[2], 1.0 } };
+    return Vec4{ .data = .{ src.data[0], src.data[1], src.data[2], 1.0 } };
 }
 
 pub fn toHomogeneousDir(src: Vec3) Vec4 {
     return toVec4(src);
 }
 
-pub noinline fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
+pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
     var res: Vec4 = undefined;
     for (0..4) |r| {
         res.data[r] = @reduce(.Add, mat.data[r] * vec.data);
@@ -32,7 +41,7 @@ pub noinline fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
     return res;
 }
 
-pub noinline fn matmul4(a: Mat4, b: Mat4) Mat4 {
+pub fn matmul4(a: Mat4, b: Mat4) Mat4 {
     var res: Mat4 = undefined;
     for (0..4) |c| {
         const col: Vec4 = .{ .data = .{ b.data[0][c], b.data[1][c], b.data[2][c], b.data[3][c] } };
@@ -45,7 +54,7 @@ pub noinline fn matmul4(a: Mat4, b: Mat4) Mat4 {
 
 /// adapted from:
 ///   https://fgiesen.wordpress.com/2013/07/09/simd-transposes-1/
-pub noinline fn mattnp4(mat: Mat4) Mat4 {
+pub fn mattnp4(mat: Mat4) Mat4 {
     const a0 = @shuffle(f32, mat.data[0], mat.data[1], @Vector(4, i32){ 0, -1, 1, -2 });
     const a1 = @shuffle(f32, mat.data[0], mat.data[1], @Vector(4, i32){ 2, -3, 3, -4 });
     const a2 = @shuffle(f32, mat.data[2], mat.data[3], @Vector(4, i32){ 0, -1, 1, -2 });
@@ -349,13 +358,16 @@ test "sincos_approx --- sin cos quadrant 3" {
     try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
 }
 
-test "Mat4 --- zero initializes by default" {
+test "Mat4 --- identity by default" {
     const mat: Mat4 = .{};
-    for (mat.data) |row| {
-        try std.testing.expectEqual(row[0], 0.0);
-        try std.testing.expectEqual(row[1], 0.0);
-        try std.testing.expectEqual(row[2], 0.0);
-        try std.testing.expectEqual(row[3], 0.0);
+    for (0..4) |r| {
+        for (0..4) |c| {
+            if (r == c) {
+                try std.testing.expectEqual(1.0, mat.data[r][c]);
+            } else {
+                try std.testing.expectEqual(0.0, mat.data[r][c]);
+            }
+        }
     }
 }
 

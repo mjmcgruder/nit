@@ -57,6 +57,7 @@ pub const Material = enum { diffuse, specular };
 
 pub const Object = struct {
     geom: GeometryType = undefined,
+    itfm: m.Mat4 = .{},
     refl: m.Vec3 = m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
     emit: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     mtrl: Material = Material.diffuse,
@@ -69,9 +70,14 @@ pub const IntersectResult = struct {
     mtrl: Material = Material.diffuse,
 };
 
-pub fn intersectRayObject(ray: Ray, obj: Object) ?IntersectResult {
+pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
+    const mray: Ray = .{
+        .o = m.toVec3(m.matvec4(obj.itfm, m.toHomogeneousPos(wray.o))),
+        .d = m.toVec3(m.matvec4(obj.itfm, m.toHomogeneousDir(wray.d))),
+    };
+
     const intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
-        .sphere => |geom_sphere| intersectRaySphere(ray, geom_sphere),
+        .sphere => |geom_sphere| intersectRaySphere(mray, geom_sphere),
     };
 
     if (intersect_geom) |geom_result| {
