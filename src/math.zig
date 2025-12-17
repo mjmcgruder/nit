@@ -18,7 +18,7 @@ pub const Mat4 = struct {
 };
 
 pub fn toVec3(src: Vec4) Vec3 {
-    return Vec3{ .data = .{ src.data[0], src.data[1], src.data[2]} };
+    return Vec3{ .data = .{ src.data[0], src.data[1], src.data[2] } };
 }
 
 pub fn toVec4(src: Vec3) Vec4 {
@@ -113,6 +113,34 @@ pub inline fn mul(a: anytype, b: anytype) Vec3 {
     const av: @Vector(3, f32) = getVector(a);
     const bv: @Vector(3, f32) = getVector(b);
     return Vec3{ .data = av * bv };
+}
+
+pub inline fn div(a: anytype, b: anytype) Vec3 {
+    const av: @Vector(3, f32) = getVector(a);
+    const bv: @Vector(3, f32) = getVector(b);
+    return Vec3{ .data = av / bv };
+}
+
+pub inline fn step(edge: anytype, x: anytype) Vec3 {
+    const ev: @Vector(3, f32) = getVector(edge);
+    const xv: @Vector(3, f32) = getVector(x);
+    var result: Vec3 = undefined;
+    for (0..3) |i| {
+        result.data[i] = if (xv[i] < ev[i]) 0.0 else 1.0;
+    }
+    return result;
+}
+
+pub inline fn sign(x: Vec3) Vec3 {
+    var result: Vec3 = undefined;
+    for (0..3) |i| {
+        result.data[i] = if (x.data[i] < 0.0) -1.0 else 1.0;
+    }
+    return result;
+}
+
+pub inline fn abs(x: Vec3) Vec3 {
+    return .{ .data = @abs(x.data) };
 }
 
 pub inline fn sdiv(a: anytype, b: anytype) @TypeOf(a, b) {

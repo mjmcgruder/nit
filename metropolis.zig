@@ -239,10 +239,10 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    if (args.len != 2) {
-        try stdout.print("  usage: metropolis <input_file>\n", .{});
-        return;
-    }
+    // if (args.len != 2) {
+    //     try stdout.print("  usage: metropolis <input_file>\n", .{});
+    //     return;
+    // }
 
     // var settings = io.Settings{};
     // var scene_list = std.ArrayList(geom.Object).empty;
@@ -253,11 +253,23 @@ pub fn main() !void {
     const settings = io.Settings{};
     var scene_list = [_]geom.Object{
         geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.4 } },
             .itfm = m.invertTransform(.{ .data = .{
                 .{ 1.0, 0.0, 0.0, 0.0 },
                 .{ 0.0, 1.0, 0.0, 0.0 },
-                .{ 0.0, 0.0, 1.0, 0.0 },
+                .{ 0.0, 0.0, 1.0, -0.5 },
+                .{ 0.0, 0.0, 0.0, 1.0 },
+            } }),
+            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
+        geom.Object{
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.4 } },
+            .itfm = m.invertTransform(.{ .data = .{
+                .{ 1.0, 0.0, 0.0, 0.0 },
+                .{ 0.0, 1.0, 0.0, 0.3 },
+                .{ 0.0, 0.0, 1.0, 0.5 },
                 .{ 0.0, 0.0, 0.0, 1.0 },
             } }),
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
@@ -267,13 +279,25 @@ pub fn main() !void {
         geom.Object{
             .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
             .itfm = m.invertTransform(.{ .data = .{
-                .{ 1.0, 0.0, 0.0, 0.0 },
-                .{ 0.0, 1.0, 0.0, 0.0 },
-                .{ 0.0, 0.0, 1.0, 0.4 },
+                .{ 1.0, 0.0, 0.0, -1.0 },
+                .{ 0.0, 1.0, 0.0, -0.6 },
+                .{ 0.0, 0.0, 1.0, 0.9 },
                 .{ 0.0, 0.0, 0.0, 1.0 },
             } }),
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
+        geom.Object{
+            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
+            .itfm = m.invertTransform(.{ .data = .{
+                .{ 1.0, 0.0, 0.0, 0.0 },
+                .{ 0.0, 1.0, 0.0, -0.5 },
+                .{ 0.0, 0.0, 1.0, 0.4 },
+                .{ 0.0, 0.0, 0.0, 1.0 },
+            } }),
+            .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
+            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .mtrl = geom.Material.diffuse,
         },
     };

@@ -45,12 +45,35 @@ fn intersectRaySphere(ray: Ray, sphere: Sphere) ?IntersectResultRayGeom {
     };
 }
 
-// fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
-//
-// }
+fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
+    const ird: m.Vec3 = m.div(1.0, ray.d); // invserse ray direction
+    const dt0: m.Vec3 = m.mul(ird, ray.o); // parametric distance to axis-orthogonal plane at 0
+    const bdc: m.Vec3 = m.mul(m.abs(ird), box.size); // box distance correction
+    const atn: m.Vec3 = m.sub(m.mul(-1.0, dt0), bdc);
+    const atf: m.Vec3 = m.add(m.mul(-1.0, dt0), bdc);
+    const tn: f32 = @max(atn.data[0], atn.data[1], atn.data[2]);
+    const tf: f32 = @min(atf.data[0], atf.data[1], atf.data[2]);
+    // miss or box behind ray origin
+    if (tn > tf or tf < 0.0) return null;
+    // hit with box ahead of ray origin
+    if (tn > 0.0) {
+        return .{
+            .dist = tn,
+            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))),
+        };
+    }
+    // hit with box ahead of ray origin
+    else {
+        return .{
+            .dist = tf,
+            .norm = m.mul(m.step(atf, tf), m.mul(-1.0, m.sign(ray.d))),
+        };
+    }
+}
 
 pub const GeometryType = union(enum) {
     sphere: Sphere,
+    box: Box,
 };
 
 pub const Material = enum { diffuse, specular };
@@ -78,6 +101,7 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
 
     const intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
         .sphere => |geom_sphere| intersectRaySphere(mray, geom_sphere),
+        .box => |geom_box| intersectRayBox(mray, geom_box),
     };
 
     if (intersect_geom) |geom_result| {
@@ -124,6 +148,42 @@ test "intersectRaySphere --- sphere behind ray origin" {
     const ray: Ray = .{ .o = .{ .data = .{ 1.5, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
     const sphere: Sphere = .{ .r = 1.0 };
     if (intersectRaySphere(ray, sphere)) |_| {
+        try std.testing.expect(false);
+    } else {
+        try std.testing.expect(true);
+    }
+}
+
+test "intersectRayBox --- box ahead" {
+    const ray: Ray = .{ .o = .{ .data = .{ -2.0, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const box: Box = .{ .size = .{ .data = .{ 0.5, 0.5, 0.5 } } };
+    if (intersectRayBox(ray, box)) |result| {
+        try std.testing.expectApproxEqAbs(1.5, result.dist, 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+    } else {
+        try std.testing.expect(false);
+    }
+}
+
+test "intersectRayBox --- ray origin inside box" {
+    const ray: Ray = .{ .o = .{ .data = .{ 0.25, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const box: Box = .{ .size = .{ .data = .{ 0.5, 0.5, 0.5 } } };
+    if (intersectRayBox(ray, box)) |result| {
+        try std.testing.expectApproxEqAbs(0.25, result.dist, 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+    } else {
+        try std.testing.expect(false);
+    }
+}
+
+test "intersectRayBox --- box behind ray origin" {
+    const ray: Ray = .{ .o = .{ .data = .{ 0.75, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const box: Box = .{ .size = .{ .data = .{ 0.5, 0.5, 0.5 } } };
+    if (intersectRayBox(ray, box)) |_| {
         try std.testing.expect(false);
     } else {
         try std.testing.expect(true);
