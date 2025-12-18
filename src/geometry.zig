@@ -80,7 +80,7 @@ pub const Material = enum { diffuse, specular };
 
 pub const Object = struct {
     geom: GeometryType = undefined,
-    itfm: m.Mat4 = .{},
+    trfm: m.Mat4 = .{},
     refl: m.Vec3 = m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
     emit: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     mtrl: Material = Material.diffuse,
@@ -94,9 +94,11 @@ pub const IntersectResult = struct {
 };
 
 pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
+    const itfm: m.Mat4 = m.invertTransform(obj.trfm);
+
     const mray: Ray = .{
-        .o = m.toVec3(m.matvec4(obj.itfm, m.toHomogeneousPos(wray.o))),
-        .d = m.toVec3(m.matvec4(obj.itfm, m.toHomogeneousDir(wray.d))),
+        .o = m.toVec3(m.matvec4(itfm, m.toHomogeneousPos(wray.o))),
+        .d = m.toVec3(m.matvec4(itfm, m.toHomogeneousDir(wray.d))),
     };
 
     var intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
@@ -106,7 +108,7 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
 
     if (intersect_geom) |*geom_result| {
         geom_result.norm = m.toVec3(  // TODO: probably pre-compute the transform and its inverse
-            m.matvec4(m.invertTransform(obj.itfm), m.toHomogeneousDir(geom_result.norm)),
+            m.matvec4(obj.trfm, m.toHomogeneousDir(geom_result.norm)),
         );
         return IntersectResult{
             .geom = geom_result.*,

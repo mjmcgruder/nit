@@ -254,46 +254,46 @@ pub fn main() !void {
     var scene_list = [_]geom.Object{
         geom.Object{
             .geom = geom.GeometryType{ .sphere = .{ .r = 0.4 } },
-            .itfm = m.invertTransform(.{ .data = .{
+            .trfm = .{ .data = .{
                 .{ 1.0, 0.0, 0.0, 0.0 },
                 .{ 0.0, 1.0, 0.0, 0.0 },
                 .{ 0.0, 0.0, 1.0, -0.5 },
                 .{ 0.0, 0.0, 0.0, 1.0 },
-            } }),
+            } },
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
             .geom = geom.GeometryType{ .sphere = .{ .r = 0.4 } },
-            .itfm = m.invertTransform(.{ .data = .{
+            .trfm = .{ .data = .{
                 .{ 1.0, 0.0, 0.0, 0.0 },
                 .{ 0.0, 1.0, 0.0, 0.3 },
                 .{ 0.0, 0.0, 1.0, 0.5 },
                 .{ 0.0, 0.0, 0.0, 1.0 },
-            } }),
+            } },
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
             .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
-            .itfm = m.invertTransform(.{ .data = .{
+            .trfm = .{ .data = .{
                 .{ 1.0, 0.0, 0.0, -1.0 },
                 .{ 0.0, 1.0, 0.0, -0.6 },
                 .{ 0.0, 0.0, 1.0, 0.9 },
                 .{ 0.0, 0.0, 0.0, 1.0 },
-            } }),
+            } },
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
             .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
-            .itfm = m.invertTransform(m.matmul4(
+            .trfm = m.matmul4(
                 m.translate(.{ .data = .{ 0.0, -0.5, 0.4 } }),
                 m.rotateAboutAxis(.{ .data = .{ 1.0, 1.0, 1.0 } }, 45.0),
-            )),
+            ),
             .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
             .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .mtrl = geom.Material.diffuse,
