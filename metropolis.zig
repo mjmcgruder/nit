@@ -133,13 +133,13 @@ fn renderPixels(
 
         var sample_i: usize = 0;
         var pixel_color: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } };
-        while (sample_i < settings.num_samples) : (sample_i += 1) {
+        sample_loop: while (sample_i < settings.num_samples) : (sample_i += 1) {
             stack_i = 0;
 
             // build bounce stack
             var ro: m.Vec3 = settings.camera_position;
             var rd: m.Vec3 = initial_ray.*;
-            while (stack_i < max_bounces) : (stack_i += 1) {
+            bounce_loop: while (stack_i < max_bounces) : (stack_i += 1) {
                 if (intersectScene(ro, rd, scene)) |intersect| {
                     var new_ray: m.Vec3 = undefined;
                     switch (intersect.mtrl) {
@@ -168,7 +168,11 @@ fn renderPixels(
                     ro = m.add(ro, m.mul(rd, intersect.geom.dist));
                     rd = new_ray;
                 } else {
-                    break;
+                    if (stack_i == 0) {
+                        break :sample_loop;
+                    } else {
+                        break :bounce_loop;
+                    }
                 }
             }
 
