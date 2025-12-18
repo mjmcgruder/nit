@@ -87,6 +87,31 @@ pub fn invertTransform(mat: Mat4) Mat4 {
     return inv;
 }
 
+pub fn translate(vec: Vec3) Mat4 {
+    return .{ .data = .{
+        .{ 1.0, 0.0, 0.0, vec.data[0] },
+        .{ 0.0, 1.0, 0.0, vec.data[1] },
+        .{ 0.0, 0.0, 1.0, vec.data[2] },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } };
+}
+
+pub fn rotateAboutAxis(axis: Vec3, angled: f32) Mat4 {
+    const axis_normalized: Vec3 = normalize(axis);
+    const c: f32 = @cos(angled * (std.math.pi / 180.0));
+    const s: f32 = @sin(angled * (std.math.pi / 180.0));
+    const x: f32 = axis_normalized.data[0];
+    const y: f32 = axis_normalized.data[1];
+    const z: f32 = axis_normalized.data[2];
+    const omc: f32 = 1.0 - c;
+    return .{ .data = .{
+        .{ omc * x * x + c, omc * x * y - s * z, omc * x * z + s * y, 0.0 },
+        .{ omc * x * y + s * z, omc * y * y + c, omc * y * z - s * x, 0.0 },
+        .{ omc * x * z - s * y, omc * y * z + s * x, omc * z * z + c, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } };
+}
+
 pub const unit_x: Vec3 = Vec3{ .data = .{ 1.0, 0.0, 0.0 } };
 pub const unit_y: Vec3 = Vec3{ .data = .{ 0.0, 1.0, 0.0 } };
 pub const unit_z: Vec3 = Vec3{ .data = .{ 0.0, 0.0, 1.0 } };

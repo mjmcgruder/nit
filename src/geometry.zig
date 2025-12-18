@@ -99,14 +99,17 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
         .d = m.toVec3(m.matvec4(obj.itfm, m.toHomogeneousDir(wray.d))),
     };
 
-    const intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
+    var intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
         .sphere => |geom_sphere| intersectRaySphere(mray, geom_sphere),
         .box => |geom_box| intersectRayBox(mray, geom_box),
     };
 
-    if (intersect_geom) |geom_result| {
+    if (intersect_geom) |*geom_result| {
+        geom_result.norm = m.toVec3(  // TODO: probably pre-compute the transform and its inverse
+            m.matvec4(m.invertTransform(obj.itfm), m.toHomogeneousDir(geom_result.norm)),
+        );
         return IntersectResult{
-            .geom = geom_result,
+            .geom = geom_result.*,
             .refl = obj.refl,
             .emit = obj.emit,
             .mtrl = obj.mtrl,
