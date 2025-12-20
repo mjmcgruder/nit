@@ -165,7 +165,7 @@ fn renderPixels(
                             };
                         },
                     }
-                    ro = m.add(ro, m.mul(rd, intersect.geom.dist));
+                    ro = m.add(ro, m.mul(rd, intersect.geom.dist * 0.9999));
                     rd = new_ray;
                 } else {
                     if (stack_i == 0) {
@@ -257,19 +257,19 @@ pub fn main() !void {
     const settings = io.Settings{};
     var scene_list = [_]geom.Object{
         geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.4 } },
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.3 } },
             .trfm = .{ .data = .{
                 .{ 1.0, 0.0, 0.0, 0.0 },
                 .{ 0.0, 1.0, 0.0, 0.0 },
                 .{ 0.0, 0.0, 1.0, -0.5 },
                 .{ 0.0, 0.0, 0.0, 1.0 },
             } },
-            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .refl = .{ .data = .{ 0.0, 0.0, 0.0 } },
+            .emit = .{ .data = .{ 4.0, 4.0, 4.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.4 } },
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.3 } },
             .trfm = .{ .data = .{
                 .{ 1.0, 0.0, 0.0, 0.0 },
                 .{ 0.0, 1.0, 0.0, 0.3 },
@@ -277,19 +277,14 @@ pub fn main() !void {
                 .{ 0.0, 0.0, 0.0, 1.0 },
             } },
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .mtrl = geom.Material.diffuse,
+            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+            .mtrl = geom.Material.specular,
         },
         geom.Object{
             .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
-            .trfm = .{ .data = .{
-                .{ 1.0, 0.0, 0.0, -1.0 },
-                .{ 0.0, 1.0, 0.0, -0.6 },
-                .{ 0.0, 0.0, 1.0, 0.9 },
-                .{ 0.0, 0.0, 0.0, 1.0 },
-            } },
+            .trfm = m.translate(.{ .data = .{ 2.7, 1.7, 1.7 } }),
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .emit = .{ .data = .{ 4.0, 4.0, 4.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
@@ -299,6 +294,13 @@ pub fn main() !void {
                 m.rotateAboutAxis(.{ .data = .{ 1.0, 1.0, 1.0 } }, 45.0),
             ),
             .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
+            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
+        geom.Object{
+            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 3.0, 2.0, 2.0 } } } },
+            .trfm = .{},
+            .refl = .{ .data = .{ 1.0, 0.78, 0.81 } },
             .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .mtrl = geom.Material.diffuse,
         },

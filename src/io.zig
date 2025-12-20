@@ -10,7 +10,7 @@ const stderr = &stderr_writer.interface;
 
 pub const Settings = struct {
     thread_count: usize = 8,
-    num_samples: usize = 2048,
+    num_samples: usize = 1 << 3,
     window_w: usize = 1920,
     window_h: usize = 1080,
     camera_position: m.Vec3 = m.Vec3{ .data = .{ -2.0, 0.0, 0.0 } },

@@ -59,7 +59,7 @@ fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
     if (tn > 0.0) {
         return .{
             .dist = tn,
-            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))),
+            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))),  // TODO: normalization occasionally slightly incorrect due to FP
         };
     }
     // hit with box ahead of ray origin
