@@ -15,6 +15,10 @@ pub const Box = struct {
     size: m.Vec3,
 };
 
+pub const Triangle = struct {
+    vertices: [3]m.Vec3,
+};
+
 const IntersectResultRayGeom = struct {
     dist: f32 = 0.0,
     norm: m.Vec3 = .{},
@@ -59,7 +63,7 @@ fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
     if (tn > 0.0) {
         return .{
             .dist = tn,
-            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))),  // TODO: normalization occasionally slightly incorrect due to FP
+            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))), // TODO: normalization occasionally slightly incorrect due to FP
         };
     }
     // hit with box ahead of ray origin
@@ -71,9 +75,25 @@ fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
     }
 }
 
+fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
+    const v0v1: m.Vec3 = m.sub(tri.vertices[1], tri.vertices[0]);
+    const v0v2: m.Vec3 = m.sub(tri.vertices[2], tri.vertices[0]);
+    const v0ro: m.Vec3 = m.sub(ray.o, tri.vertices[0]);
+    const n: m.Vec3 = m.cross(v0v1, v0v2);
+    const q: m.Vec3 = m.cross(v0ro, ray.d);
+    const d: f32 = 1.0 / m.dot(ray.d, n);
+    const u: f32 = d * m.dot(m.mul(-1.0, q), v0v2);
+    const v: f32 = d * m.dot(q, v0v1);
+    const t: f32 = d * m.dot(m.mul(-1.0, n), v0ro);
+    if (u < 0.0 or v < 0.0 or (u + v) > 1.0 or t < 0.0) return null;
+    const nn: m.Vec3 = m.normalize(n);
+    return .{ .dist = t, .norm = if (m.dot(n, ray.d) < 0.0) nn else m.mul(-1.0, nn) };
+}
+
 pub const GeometryType = union(enum) {
     sphere: Sphere,
     box: Box,
+    triangle: Triangle,
 };
 
 pub const Material = enum { diffuse, specular };
@@ -104,10 +124,11 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
     var intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
         .sphere => |geom_sphere| intersectRaySphere(mray, geom_sphere),
         .box => |geom_box| intersectRayBox(mray, geom_box),
+        .triangle => |geom_triangle| intersectRayTriangle(mray, geom_triangle),
     };
 
     if (intersect_geom) |*geom_result| {
-        geom_result.norm = m.toVec3(  // TODO: probably pre-compute the transform and its inverse
+        geom_result.norm = m.toVec3(
             m.matvec4(obj.trfm, m.toHomogeneousDir(geom_result.norm)),
         );
         return IntersectResult{

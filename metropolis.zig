@@ -300,6 +300,20 @@ pub fn main() !void {
             .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .mtrl = geom.Material.specular,
         },
+        geom.Object{
+            .geom = geom.GeometryType{ .triangle = .{ .vertices = .{
+                .{ .data = .{ 0.0, 0.0, 0.0 } },
+                .{ .data = .{ 0.0, 0.3, 0.0 } },
+                .{ .data = .{ 0.0, 0.0, 0.3 } },
+            } } },
+            .trfm = m.matmul4(
+                m.translate(.{ .data = .{ 2.0, 0.0, 1.4 } }),
+                m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, 90.0),
+            ),
+            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
     };
     const scene: []geom.Object = &scene_list;
 

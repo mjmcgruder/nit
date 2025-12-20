@@ -69,18 +69,22 @@ pub fn mattnp4(mat: Mat4) Mat4 {
 
 /// adapted from:
 ///   https://lxjk.github.io/2017/09/03/Fast-4x4-Matrix-Inverse-with-SSE-SIMD-Explained.html
-/// This function only returns the correct inverse for normalized (no scaling) 4x4 transformation
-/// matrices. Translation may be arbitrary. Bottom row values must be zero, except the final value
-/// which should be 1.
+/// Translation may be arbitrary. Bottom row values must be zero, except the final value which
+/// should be 1.
 pub fn invertTransform(mat: Mat4) Mat4 {
     // TODO: assert this is actually a normalized transform in non-release / safe builds?
     const tnp: Mat4 = mattnp4(mat);
+    const ixsq: f32 = 1.0 / @reduce(.Add, tnp.data[0] * tnp.data[0]);
+    const iysq: f32 = 1.0 / @reduce(.Add, tnp.data[1] * tnp.data[1]);
+    const izsq: f32 = 1.0 / @reduce(.Add, tnp.data[2] * tnp.data[2]);
     var inv: Mat4 = tnp;
     const trs: @Vector(4, f32) = .{ tnp.data[3][0], tnp.data[3][1], tnp.data[3][2], 0.0 };
-    // TODO: I think you can still overwrite tnp here b/c last entry set zero in translation
-    inv.data[0][3] = -@reduce(.Add, tnp.data[0] * trs);
-    inv.data[1][3] = -@reduce(.Add, tnp.data[1] * trs);
-    inv.data[2][3] = -@reduce(.Add, tnp.data[2] * trs);
+    inv.data[0] *= @as(@Vector(4, f32), @splat(ixsq));
+    inv.data[1] *= @as(@Vector(4, f32), @splat(iysq));
+    inv.data[2] *= @as(@Vector(4, f32), @splat(izsq));
+    inv.data[0][3] = -ixsq * @reduce(.Add, tnp.data[0] * trs);
+    inv.data[1][3] = -iysq * @reduce(.Add, tnp.data[1] * trs);
+    inv.data[2][3] = -izsq * @reduce(.Add, tnp.data[2] * trs);
     inv.data[3][0] = 0.0;
     inv.data[3][1] = 0.0;
     inv.data[3][2] = 0.0;
