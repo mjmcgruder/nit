@@ -165,7 +165,10 @@ fn renderPixels(
                             };
                         },
                     }
-                    ro = m.add(ro, m.mul(rd, intersect.geom.dist * 0.9999));
+                    ro = m.add(
+                        m.add(ro, m.mul(rd, intersect.geom.dist)),
+                        m.mul(intersect.geom.norm, 1e-5),
+                    );
                     rd = new_ray;
                 } else {
                     if (stack_i == 0) {
@@ -257,52 +260,45 @@ pub fn main() !void {
     const settings = io.Settings{};
     var scene_list = [_]geom.Object{
         geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.3 } },
-            .trfm = .{ .data = .{
-                .{ 1.0, 0.0, 0.0, 0.0 },
-                .{ 0.0, 1.0, 0.0, 0.0 },
-                .{ 0.0, 0.0, 1.0, -0.5 },
-                .{ 0.0, 0.0, 0.0, 1.0 },
-            } },
-            .refl = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .emit = .{ .data = .{ 4.0, 4.0, 4.0 } },
+            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 1.5, 0.75, 1.5 } } } },
+            .trfm = m.translate(.{ .data = .{ 1.0, 0.0, 0.0 } }),
+            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.3 } },
-            .trfm = .{ .data = .{
-                .{ 1.0, 0.0, 0.0, 0.0 },
-                .{ 0.0, 1.0, 0.0, 0.3 },
-                .{ 0.0, 0.0, 1.0, 0.5 },
-                .{ 0.0, 0.0, 0.0, 1.0 },
-            } },
-            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.specular,
-        },
-        geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
-            .trfm = m.translate(.{ .data = .{ 2.7, 1.7, 1.7 } }),
-            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 4.0, 4.0, 4.0 } },
+            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
+            .trfm = m.translate(.{ .data = .{ 2.0, 0.75 + 0.2 * 0.99, 0.0 } }),
+            .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
+            .emit = .{ .data = .{ 12.0, 12.0, 12.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
             .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
             .trfm = m.matmul4(
-                m.translate(.{ .data = .{ 0.0, -0.5, 0.4 } }),
-                m.rotateAboutAxis(.{ .data = .{ 1.0, 1.0, 1.0 } }, 45.0),
+                m.translate(.{ .data = .{ 1.9, -0.75 + 0.2, 0.5 } }),
+                m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, -15.0),
+            ),
+            .refl = .{ .data = .{ 0.0, 1.0, 0.0 } },
+            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+            .mtrl = geom.Material.diffuse,
+        },
+        geom.Object{
+            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.4, 0.2 } } } },
+            .trfm = m.matmul4(
+                m.translate(.{ .data = .{ 2.1, -0.75 + 0.4, -0.6 } }),
+                m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, 35.0),
             ),
             .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
             .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .mtrl = geom.Material.diffuse,
         },
         geom.Object{
-            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 3.0, 2.0, 2.0 } } } },
-            .trfm = .{},
-            .refl = .{ .data = .{ 1.0, 0.78, 0.81 } },
+            .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
+            .trfm = m.translate(.{ .data = .{ 1.5, -0.75 + 0.2, 0.0 } }),
+            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.diffuse,
+            .mtrl = geom.Material.specular,
         },
     };
     const scene: []geom.Object = &scene_list;
