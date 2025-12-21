@@ -19,6 +19,11 @@ pub const Triangle = struct {
     vertices: [3]m.Vec3,
 };
 
+pub const Mesh = struct {
+    indices: []const u32,
+    vertices: []const m.Vec3,
+};
+
 const IntersectResultRayGeom = struct {
     dist: f32 = 0.0,
     norm: m.Vec3 = .{},
@@ -90,10 +95,31 @@ fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
     return .{ .dist = t, .norm = if (m.dot(n, ray.d) < 0.0) nn else m.mul(-1.0, nn) };
 }
 
+fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
+    var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
+    std.debug.assert(mesh.indices.len % 3 == 0);
+    const ntri: usize = mesh.indices.len / 3;
+    var it: usize = 0;
+    while (it < ntri) : (it += 1) {
+        const triangle: Triangle = .{ .vertices = .{
+            mesh.vertices[mesh.indices[3 * it + 0]],
+            mesh.vertices[mesh.indices[3 * it + 1]],
+            mesh.vertices[mesh.indices[3 * it + 2]],
+        } };
+        if (intersectRayTriangle(ray, triangle)) |intersect| {
+            if (intersect.dist < result.dist) {
+                result = intersect;
+            }
+        }
+    }
+    return if (result.dist == std.math.floatMax(f32)) null else result;
+}
+
 pub const GeometryType = union(enum) {
     sphere: Sphere,
     box: Box,
     triangle: Triangle,
+    mesh: Mesh,
 };
 
 pub const Material = enum { diffuse, specular };
@@ -125,6 +151,7 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
         .sphere => |geom_sphere| intersectRaySphere(mray, geom_sphere),
         .box => |geom_box| intersectRayBox(mray, geom_box),
         .triangle => |geom_triangle| intersectRayTriangle(mray, geom_triangle),
+        .mesh => |geom_mesh| intersectRayMesh(mray, geom_mesh),
     };
 
     if (intersect_geom) |*geom_result| {
