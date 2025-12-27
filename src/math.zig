@@ -144,10 +144,18 @@ pub inline fn mul(a: anytype, b: anytype) Vec3 {
     return Vec3{ .data = av * bv };
 }
 
+pub inline fn sdiv(a: anytype, b: anytype) @TypeOf(a, b) {
+    return if (b == 0.0) (a / eps) else (a / b);
+}
+
 pub inline fn div(a: anytype, b: anytype) Vec3 {
     const av: @Vector(3, f32) = getVector(a);
     const bv: @Vector(3, f32) = getVector(b);
-    return Vec3{ .data = av / bv };
+    var dv: @Vector(3, f32) = undefined;
+    for (0..3) |i| {
+        dv[i] = sdiv(av[i], bv[i]);
+    }
+    return Vec3{ .data = dv };
 }
 
 pub inline fn step(edge: anytype, x: anytype) Vec3 {
@@ -170,10 +178,6 @@ pub inline fn sign(x: Vec3) Vec3 {
 
 pub inline fn abs(x: Vec3) Vec3 {
     return .{ .data = @abs(x.data) };
-}
-
-pub inline fn sdiv(a: anytype, b: anytype) @TypeOf(a, b) {
-    return if (b == 0.0) 0.0 else (a / b);
 }
 
 pub inline fn dot(a: Vec3, b: Vec3) f32 {
