@@ -20,8 +20,8 @@ pub const Triangle = struct {
 };
 
 pub const Mesh = struct {
-    indices: []const u32,
-    vertices: []const m.Vec3,
+    vertices: []const m.Vec3 = &.{},
+    indices: []const u32 = &.{},
 };
 
 const IntersectResultRayGeom = struct {
