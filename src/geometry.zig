@@ -20,8 +20,13 @@ pub const Triangle = struct {
 };
 
 pub const Mesh = struct {
-    vertices: []const m.Vec3 = &.{},
-    indices: []const u32 = &.{},
+    vrt: std.ArrayList(m.Vec3) = .empty,
+    ind: std.ArrayList(u32) = .empty,
+
+    pub fn deinit(self: *Mesh, allocator: std.mem.Allocator) void {
+        self.vrt.deinit(allocator);
+        self.ind.deinit(allocator);
+    }
 };
 
 const IntersectResultRayGeom = struct {
@@ -97,14 +102,14 @@ fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
 
 fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
     var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
-    std.debug.assert(mesh.indices.len % 3 == 0);
-    const ntri: usize = mesh.indices.len / 3;
+    std.debug.assert(mesh.ind.items.len % 3 == 0);
+    const ntri: usize = mesh.ind.items.len / 3;
     var it: usize = 0;
     while (it < ntri) : (it += 1) {
         const triangle: Triangle = .{ .vertices = .{
-            mesh.vertices[mesh.indices[3 * it + 0]],
-            mesh.vertices[mesh.indices[3 * it + 1]],
-            mesh.vertices[mesh.indices[3 * it + 2]],
+            mesh.vrt.items[mesh.ind.items[3 * it + 0]],
+            mesh.vrt.items[mesh.ind.items[3 * it + 1]],
+            mesh.vrt.items[mesh.ind.items[3 * it + 2]],
         } };
         if (intersectRayTriangle(ray, triangle)) |intersect| {
             if (intersect.dist < result.dist) {

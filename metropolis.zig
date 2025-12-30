@@ -320,11 +320,6 @@ pub fn main() !void {
     //     },
     // };
 
-    var vertices = std.ArrayList(m.Vec3).empty;
-    var indices = std.ArrayList(u32).empty;
-    defer vertices.deinit(allocator);
-    defer indices.deinit(allocator);
-
     var scene_list = [_]geom.Object{
         geom.Object{
             .geom = geom.GeometryType{ .sphere = .{ .r = 0.5 } },
@@ -333,15 +328,8 @@ pub fn main() !void {
             .emit = .{ .data = .{ 12.0, 12.0, 12.0 } },
             .mtrl = geom.Material.diffuse,
         },
-        // geom.Object{
-        //     .geom = geom.GeometryType{ .sphere = .{ .r = 1.0 } },
-        //     .trfm = m.translate(.{ .data = .{ 4.0, 0.0, 2.0 } }),
-        //     .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-        //     .emit = .{ .data = .{ 1.0, 1.0, 1.0 } },
-        //     .mtrl = geom.Material.diffuse,
-        // },
         geom.Object{
-            .geom = geom.GeometryType{ .mesh = try io.readASCIISTL("Suzanne.stl", &vertices, &indices, allocator) },
+            .geom = geom.GeometryType{ .mesh = try io.readASCIISTL("Suzanne.stl", allocator) },  // TODO: deinit this? (arena takes care of it in this case but still?)
             .trfm = m.matmul4(m.translate(.{ .data = .{ 4.0, 0.0, 2.0 } }), m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 1.0 } }, -110.0)),
             .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
             .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },

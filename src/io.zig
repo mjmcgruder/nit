@@ -10,7 +10,7 @@ const stderr = &stderr_writer.interface;
 
 pub const Settings = struct {
     thread_count: usize = 8,
-    num_samples: usize = 1 << 9,
+    num_samples: usize = 1 << 3,
     window_w: usize = 1920,
     window_h: usize = 1080,
     camera_position: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
@@ -216,12 +216,9 @@ fn getNextWord(str: []u8, word: *[]u8) []u8 {
 
 pub fn readASCIISTL(
     rel_path: []const u8,
-    mem_vertices: *std.ArrayList(m.Vec3),
-    mem_indices: *std.ArrayList(u32),
     allocator: std.mem.Allocator,
 ) !geom.Mesh {
-    mem_vertices.clearRetainingCapacity();
-    mem_indices.clearRetainingCapacity();
+    var result: geom.Mesh = .{};
 
     const fID: std.fs.File = try std.fs.cwd().openFile(rel_path, .{});
     defer fID.close();
@@ -240,11 +237,7 @@ pub fn readASCIISTL(
     for (0..(1 << 27)) |_| {
         trim = try reader.takeDelimiterInclusive('\n');
         trim = getNextWord(trim, &word);
-        if (std.mem.eql(u8, word, "endsolid")) {
-            std.debug.assert(mem_vertices.items.len % 3 == 0);
-            std.debug.assert(mem_indices.items.len % 3 == 0);
-            return .{ .vertices = mem_vertices.items, .indices = mem_indices.items };
-        }
+        if (std.mem.eql(u8, word, "endsolid")) return result;
         if (!std.mem.eql(u8, word, "facet")) return STLReadError.FormatError;
         trim = getNextWord(trim, &word);
         if (!std.mem.eql(u8, word, "normal")) return STLReadError.FormatError;
@@ -264,8 +257,8 @@ pub fn readASCIISTL(
                 trim = getNextWord(trim, &word);
                 vertex.data[i] = try std.fmt.parseFloat(f32, word);
             }
-            try mem_vertices.append(allocator, vertex);
-            try mem_indices.append(allocator, @as(u32, @intCast(mem_indices.items.len))); // TODO: fails if too many indices
+            try result.vrt.append(allocator, vertex);
+            try result.ind.append(allocator, @as(u32, @intCast(result.ind.items.len))); // TODO: fails if too many indices
         }
 
         trim = try reader.takeDelimiterInclusive('\n');
@@ -284,16 +277,13 @@ pub fn readASCIISTL(
 
 test "readASCIISTL --- runs" {
     const allocator: std.mem.Allocator = std.testing.allocator;
-    var vertices = std.ArrayList(m.Vec3).empty;
-    var indices = std.ArrayList(u32).empty;
-    defer vertices.deinit(allocator);
-    defer indices.deinit(allocator);
-    const mesh: geom.Mesh = try readASCIISTL("Suzanne.stl", &vertices, &indices, allocator);
+    var mesh: geom.Mesh = try readASCIISTL("Suzanne.stl", allocator);
+    defer mesh.deinit(allocator);
 
-    for (0..(mesh.indices.len / 3)) |ti| {
-        const v0: m.Vec3 = mesh.vertices[mesh.indices[3 * ti + 0]];
-        const v1: m.Vec3 = mesh.vertices[mesh.indices[3 * ti + 1]];
-        const v2: m.Vec3 = mesh.vertices[mesh.indices[3 * ti + 2]];
+    for (0..(mesh.ind.items.len / 3)) |ti| {
+        const v0: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 0]];
+        const v1: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 1]];
+        const v2: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 2]];
         std.debug.print("{} {} {}\n", .{ v0.data[0], v0.data[1], v0.data[2] });
         std.debug.print("{} {} {}\n", .{ v1.data[0], v1.data[1], v1.data[2] });
         std.debug.print("{} {} {}\n", .{ v2.data[0], v2.data[1], v2.data[2] });
