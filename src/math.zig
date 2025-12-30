@@ -91,11 +91,20 @@ pub fn invertTransform(mat: Mat4) Mat4 {
     return inv;
 }
 
-pub fn translate(vec: Vec3) Mat4 {
+pub fn translate(vec: Vec3) Mat4 {  // TODO: this naming scheme is... bad?
     return .{ .data = .{
         .{ 1.0, 0.0, 0.0, vec.data[0] },
         .{ 0.0, 1.0, 0.0, vec.data[1] },
         .{ 0.0, 0.0, 1.0, vec.data[2] },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } };
+}
+
+pub fn scale(multiple: f32) Mat4 {
+    return .{ .data = .{
+        .{ multiple, 0.0, 0.0, 0.0 },
+        .{ 0.0, multiple, 0.0, 0.0 },
+        .{ 0.0, 0.0, multiple, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } };
 }
