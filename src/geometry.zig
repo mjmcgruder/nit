@@ -8,11 +8,11 @@ pub const Ray = struct {
 };
 
 pub const Sphere = struct {
-    r: f32,
+    r: f32 = 1.0,
 };
 
 pub const Box = struct {
-    size: m.Vec3,
+    size: m.Vec3 = .{ .data = .{ 1.0, 1.0, 1.0 } },
 };
 
 pub const Triangle = struct {
@@ -123,7 +123,6 @@ fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
 pub const GeometryType = union(enum) {
     sphere: Sphere,
     box: Box,
-    triangle: Triangle,
     mesh: Mesh,
 };
 
@@ -131,7 +130,12 @@ pub const Material = enum { diffuse, specular };
 
 pub const Object = struct {
     geom: GeometryType = undefined,
-    trfm: m.Mat4 = .{},
+    trfm: m.Mat4 = .{ .data = .{
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } },
     refl: m.Vec3 = m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
     emit: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
     mtrl: Material = Material.diffuse,
@@ -155,7 +159,6 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
     var intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
         .sphere => |geom_sphere| intersectRaySphere(mray, geom_sphere),
         .box => |geom_box| intersectRayBox(mray, geom_box),
-        .triangle => |geom_triangle| intersectRayTriangle(mray, geom_triangle),
         .mesh => |geom_mesh| intersectRayMesh(mray, geom_mesh),
     };
 

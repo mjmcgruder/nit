@@ -269,7 +269,7 @@ pub fn main() !void {
         geom.Object{
             .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
             .trfm = m.translate(.{ .data = .{ 2.0, 0.75 + 0.2 * 0.99, 0.0 } }),
-            .refl = .{ .data = .{ 1.0, 0.0, 0.0 } },
+            .refl = .{ .data = .{ 0.0, 0.0, 0.0 } },
             .emit = .{ .data = .{ 12.0, 12.0, 12.0 } },
             .mtrl = geom.Material.diffuse,
         },

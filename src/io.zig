@@ -10,7 +10,7 @@ const stderr = &stderr_writer.interface;
 
 pub const Settings = struct {
     thread_count: usize = 8,
-    num_samples: usize = 1 << 3,
+    num_samples: usize = 1 << 0,
     window_w: usize = 1920,
     window_h: usize = 1080,
     camera_position: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
@@ -25,147 +25,136 @@ pub const Pixel = struct {
     b: u8 = 0,
 };
 
-const ParsingError = error{
-    DelimiterNotFound,
-    KeyNotFound,
-    UnknownBlock,
-    UnknownEnum,
-};
-
-fn parseType(result_type: type, string: []u8) !result_type {
-    return switch (result_type) {
-        usize => try std.fmt.parseInt(usize, string, 10),
-        f32 => try std.fmt.parseFloat(f32, string),
-        m.Vec3 => try parseVector(string),
-        geom.Material => try parseEnum(geom.Material, string),
-        else => comptime unreachable,
-    };
-}
-
-fn parseEnum(enum_type: type, string: []u8) !enum_type {
-    inline for (@typeInfo(enum_type).@"enum".fields) |field| {
-        if (std.mem.eql(u8, string, field.name)) {
-            return @field(enum_type, field.name);
-        }
-    }
-    return ParsingError.UnknownEnum;
-}
-
-fn parseVector(string: []u8) !m.Vec3 {
-    const split0: [2][]u8 = try splitAtDelimiter(string, ',');
-    const split1: [2][]u8 = try splitAtDelimiter(split0[1], ',');
-    return m.Vec3{ .data = .{
-        try std.fmt.parseFloat(f32, split0[0]),
-        try std.fmt.parseFloat(f32, split1[0]),
-        try std.fmt.parseFloat(f32, split1[1]),
-    } };
-}
-
-fn setSetting(key: []u8, val: []u8, settings: anytype) !@TypeOf(settings) {
-    var new_settings = settings;
-    inline for (@typeInfo(@TypeOf(settings)).@"struct".fields) |field| {
-        if (std.mem.eql(u8, key, field.name)) {
-            @field(new_settings, field.name) = try parseType(field.type, val);
-            return new_settings;
-        }
-    }
-    return ParsingError.KeyNotFound;
-}
-
-fn trimWhitespace(str: []u8) []u8 {
-    var start: usize = 0;
-    while (start < str.len and std.ascii.isWhitespace(str[start])) : (start += 1) {}
-    var end: usize = str.len;
-    while (end > start and std.ascii.isWhitespace(str[end - 1])) : (end -= 1) {}
-    return str[start..end];
-}
-
-fn splitAtDelimiter(str: []u8, delim: u8) ParsingError![2][]u8 {
-    var output: [2][]u8 = undefined;
-    var split: usize = 0;
-    var delimiter_found: bool = false;
-    while (split < str.len) : (split += 1) {
-        if (str[split] == delim) {
-            output[0] = str[0..split];
-            output[1] = str[(split + 1)..];
-            delimiter_found = true;
-            break;
-        }
-    }
-    return if (delimiter_found) output else ParsingError.DelimiterNotFound;
-}
-
-pub fn readInput(
-    allocator: std.mem.Allocator,
-    file_name: []const u8,
-    settings: *Settings,
-    scene: *std.ArrayList(geom.Object),
-) !void {
-    const ParseMode = enum {
-        normal,
-        sphere,
-    };
-
-    var mode: ParseMode = ParseMode.normal;
-
-    const cwd: std.fs.Dir = std.fs.cwd();
-    const fID: std.fs.File = try cwd.openFile(file_name, .{});
-    defer fID.close();
-
-    var read_buffer: [1 << 12]u8 = undefined;
-    var file_reader = fID.reader(&read_buffer);
-    const reader = &file_reader.interface;
-
-    var line_num: usize = 1;
-    var next_line_normal: bool = false;
-    while (reader.takeDelimiterExclusive('\n')) |line| : (line_num += 1) {
-        reader.toss(1); // pass the newline character
-        errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
-
-        if (next_line_normal == true) {
-            mode = ParseMode.normal;
-            next_line_normal = false;
-        }
-
-        // trim comments and extra white space
-        var segment: []u8 = trimWhitespace(
-            (splitAtDelimiter(line, '#') catch [2][]u8{ line, line })[0],
-        );
-        if (segment.len == 0) continue;
-
-        // determine mode change (mode change is always followed by "continue;")
-        if (mode == ParseMode.normal) {
-            if (splitAtDelimiter(segment, '{')) |mode_string_dual| {
-                mode = try parseEnum(ParseMode, trimWhitespace(mode_string_dual[0]));
-                try scene.append(allocator, geom.Object{});
-                continue;
-            } else |_| {}
-        } else {
-            if (splitAtDelimiter(segment, '}')) |close_string_dual| {
-                segment = trimWhitespace(close_string_dual[0]);
-                next_line_normal = true;
-            } else |_| {}
-        }
-
-        if (segment.len == 0) continue;
-
-        // parse key-value pair
-        const keyval: [2][]u8 = try splitAtDelimiter(segment, '=');
-        const key: []u8 = trimWhitespace(keyval[0]);
-        const val: []u8 = trimWhitespace(keyval[1]);
-
-        // assign settings
-        switch (mode) {
-            ParseMode.normal => {
-                settings.* = try setSetting(key, val, settings.*);
-            },
-            ParseMode.sphere => {
-                const last_object: *geom.Object = &scene.items[scene.items.len - 1];
-                last_object.* = try setSetting(key, val, last_object.*);
-            },
-        }
-    } else |_| {}
-}
+// const ParsingError = error{
+//     DelimiterNotFound,
+//     KeyNotFound,
+//     UnknownBlock,
+//     UnknownEnum,
+// };
+//
+// fn parseType(result_type: type, string: []u8) !result_type {
+//     return switch (result_type) {
+//         usize => try std.fmt.parseInt(usize, string, 10),
+//         f32 => try std.fmt.parseFloat(f32, string),
+//         m.Vec3 => try parseVector(string),
+//         geom.Material => try parseEnum(geom.Material, string),
+//         else => comptime unreachable,
+//     };
+// }
+//
+// fn parseEnum(enum_type: type, string: []u8) !enum_type {
+//     inline for (@typeInfo(enum_type).@"enum".fields) |field| {
+//         if (std.mem.eql(u8, string, field.name)) {
+//             return @field(enum_type, field.name);
+//         }
+//     }
+//     return ParsingError.UnknownEnum;
+// }
+// fn setSetting(key: []u8, val: []u8, settings: anytype) !@TypeOf(settings) {
+//     var new_settings = settings;
+//     inline for (@typeInfo(@TypeOf(settings)).@"struct".fields) |field| {
+//         if (std.mem.eql(u8, key, field.name)) {
+//             @field(new_settings, field.name) = try parseType(field.type, val);
+//             return new_settings;
+//         }
+//     }
+//     return ParsingError.KeyNotFound;
+// }
+//
+// fn trimWhitespace(str: []u8) []u8 {
+//     var start: usize = 0;
+//     while (start < str.len and std.ascii.isWhitespace(str[start])) : (start += 1) {}
+//     var end: usize = str.len;
+//     while (end > start and std.ascii.isWhitespace(str[end - 1])) : (end -= 1) {}
+//     return str[start..end];
+// }
+//
+// fn splitAtDelimiter(str: []u8, delim: u8) ParsingError![2][]u8 {
+//     var output: [2][]u8 = undefined;
+//     var split: usize = 0;
+//     var delimiter_found: bool = false;
+//     while (split < str.len) : (split += 1) {
+//         if (str[split] == delim) {
+//             output[0] = str[0..split];
+//             output[1] = str[(split + 1)..];
+//             delimiter_found = true;
+//             break;
+//         }
+//     }
+//     return if (delimiter_found) output else ParsingError.DelimiterNotFound;
+// }
+//
+// pub fn readInput(
+//     allocator: std.mem.Allocator,
+//     file_name: []const u8,
+//     settings: *Settings,
+//     scene: *std.ArrayList(geom.Object),
+// ) !void {
+//     const ParseMode = enum {
+//         normal,
+//         sphere,
+//     };
+//
+//     var mode: ParseMode = ParseMode.normal;
+//
+//     const cwd: std.fs.Dir = std.fs.cwd();
+//     const fID: std.fs.File = try cwd.openFile(file_name, .{});
+//     defer fID.close();
+//
+//     var read_buffer: [1 << 12]u8 = undefined;
+//     var file_reader = fID.reader(&read_buffer);
+//     const reader = &file_reader.interface;
+//
+//     var line_num: usize = 1;
+//     var next_line_normal: bool = false;
+//     while (reader.takeDelimiterExclusive('\n')) |line| : (line_num += 1) {
+//         reader.toss(1); // pass the newline character
+//         errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
+//
+//         if (next_line_normal == true) {
+//             mode = ParseMode.normal;
+//             next_line_normal = false;
+//         }
+//
+//         // trim comments and extra white space
+//         var segment: []u8 = trimWhitespace(
+//             (splitAtDelimiter(line, '#') catch [2][]u8{ line, line })[0],
+//         );
+//         if (segment.len == 0) continue;
+//
+//         // determine mode change (mode change is always followed by "continue;")
+//         if (mode == ParseMode.normal) {
+//             if (splitAtDelimiter(segment, '{')) |mode_string_dual| {
+//                 mode = try parseEnum(ParseMode, trimWhitespace(mode_string_dual[0]));
+//                 try scene.append(allocator, geom.Object{});
+//                 continue;
+//             } else |_| {}
+//         } else {
+//             if (splitAtDelimiter(segment, '}')) |close_string_dual| {
+//                 segment = trimWhitespace(close_string_dual[0]);
+//                 next_line_normal = true;
+//             } else |_| {}
+//         }
+//
+//         if (segment.len == 0) continue;
+//
+//         // parse key-value pair
+//         const keyval: [2][]u8 = try splitAtDelimiter(segment, '=');
+//         const key: []u8 = trimWhitespace(keyval[0]);
+//         const val: []u8 = trimWhitespace(keyval[1]);
+//
+//         // assign settings
+//         switch (mode) {
+//             ParseMode.normal => {
+//                 settings.* = try setSetting(key, val, settings.*);
+//             },
+//             ParseMode.sphere => {
+//                 const last_object: *geom.Object = &scene.items[scene.items.len - 1];
+//                 last_object.* = try setSetting(key, val, last_object.*);
+//             },
+//         }
+//     } else |_| {}
+// }
 
 pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []const u8) !void {
     const file: std.fs.File = try std.fs.cwd().createFile(file_name, .{});
@@ -185,34 +174,218 @@ pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []
     try writer.flush();
 }
 
-const STLReadError = error{
+const ParsingError = error{
     FormatError,
-    FacetLimitExceeded,
+    UnknownObjectType,
+    UnknownKey,
+    UnknownEnumValue,
 };
 
-// grab line
-// skip to next non-whitespace character
-//   check keywords as you go to ensure correct format
-// ignore normals for now
-//   (use them as validation later probably)
-
-// NOTE: just assume you're looking at line subsegments ya?
+fn seekWhitespace(str: []u8, start: usize) usize {
+    var head: usize = start;
+    while (head < str.len and !std.ascii.isWhitespace(str[head])) : (head += 1) {}
+    return head;
+}
+fn seekNonWhitespace(str: []u8, start: usize) usize {
+    var head: usize = start;
+    while (head < str.len and std.ascii.isWhitespace(str[head])) : (head += 1) {}
+    return head;
+}
+fn seekCharacter(str: []u8, start: usize, char: u8) usize {
+    var head: usize = start;
+    while (head < str.len and str[head] != char) : (head += 1) {}
+    return head;
+}
 
 fn skipWhiteSpace(str: []u8) []u8 {
-    var start: usize = 0;
-    while (start < str.len and std.ascii.isWhitespace(str[start])) : (start += 1) {}
-    return str[start..];
+    return str[seekNonWhitespace(str, 0)..];
 }
 
 fn getNextWord(str: []u8, word: *[]u8) []u8 {
     const trim: []u8 = skipWhiteSpace(str);
-
-    var word_end: usize = 0;
-    while (word_end < trim.len and !std.ascii.isWhitespace(trim[word_end])) : (word_end += 1) {}
-
+    const word_end = seekWhitespace(trim, 0);
     word.* = trim[0..word_end];
     return trim[word_end..];
 }
+
+fn parseKeyVal(str: []u8, key: *[]u8, val: *[]u8) !void {
+    var word: []u8 = &.{};
+    var trim: []u8 = str;
+    trim = getNextWord(trim, key);
+    trim = getNextWord(trim, &word);
+    if (!std.mem.eql(u8, word, "=")) return ParsingError.FormatError;
+    trim = getNextWord(trim, val);
+}
+
+fn parseEnum(enum_type: type, string: []u8) !enum_type {
+    inline for (@typeInfo(enum_type).@"enum".fields) |field| {
+        if (std.mem.eql(u8, string, field.name)) {
+            return @field(enum_type, field.name);
+        }
+    }
+    return ParsingError.UnknownEnumValue;
+}
+
+fn parseVec3(str: []u8) !m.Vec3 {
+    const begin = seekNonWhitespace(str, 0);
+    const end_elem0 = seekCharacter(str, begin, ',');
+    const end_elem1 = seekCharacter(str, end_elem0 + 1, ',');
+    const end_elem2 = seekWhitespace(str, end_elem1 + 1);
+    return m.Vec3{ .data = .{
+        try std.fmt.parseFloat(f32, str[begin..end_elem0]),
+        try std.fmt.parseFloat(f32, str[(end_elem0 + 1)..end_elem1]),
+        try std.fmt.parseFloat(f32, str[(end_elem1 + 1)..end_elem2]),
+    } };
+}
+
+fn parseVec4(str: []u8) !m.Vec4 {
+    const begin = seekNonWhitespace(str, 0);
+    const end_elem0 = seekCharacter(str, begin, ',');
+    const end_elem1 = seekCharacter(str, end_elem0 + 1, ',');
+    const end_elem2 = seekCharacter(str, end_elem1 + 1, ',');
+    const end_elem3 = seekWhitespace(str, end_elem2 + 1);
+    return m.Vec4{ .data = .{
+        try std.fmt.parseFloat(f32, str[begin..end_elem0]),
+        try std.fmt.parseFloat(f32, str[(end_elem0 + 1)..end_elem1]),
+        try std.fmt.parseFloat(f32, str[(end_elem1 + 1)..end_elem2]),
+        try std.fmt.parseFloat(f32, str[(end_elem2 + 1)..end_elem3]),
+    } };
+}
+
+const InputParseMode = enum {
+    normal,
+    object,
+};
+
+pub fn readInput(
+    rel_path: []const u8,
+    allocator: std.mem.Allocator,
+) !struct { settings: Settings, scene: std.ArrayList(geom.Object) } {
+    var settings: Settings = .{};
+    var scene: std.ArrayList(geom.Object) = .empty;
+
+    var mode: InputParseMode = .normal;
+
+    const fID: std.fs.File = try std.fs.cwd().openFile(rel_path, .{});
+    defer fID.close();
+
+    var read_buffer: [1 << 12]u8 = undefined;
+    var file_reader = fID.reader(&read_buffer);
+    const reader = &file_reader.interface;
+
+    var line_num: usize = 1;
+    var trim: []u8 = &.{};
+    var word: []u8 = &.{};
+
+    line_loop: while (reader.takeDelimiterInclusive('\n')) |line| : (line_num += 1) {
+        errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
+
+        trim = skipWhiteSpace(line);
+
+        // skip comment lines
+        if (trim.len == 0 or trim[0] == '#') continue;
+
+        _ = getNextWord(trim, &word);
+
+        // change mode if necessary
+        if (std.mem.eql(u8, word, "end")) {
+            mode = .normal;
+            continue :line_loop;
+        }
+        if (std.mem.eql(u8, word, "object")) {
+            mode = .object;
+            trim = getNextWord(trim, &word);
+            trim = getNextWord(trim, &word);
+
+            if (std.mem.eql(u8, word, "sphere")) {
+                try scene.append(allocator, .{ .geom = geom.GeometryType{ .sphere = .{} } });
+                continue :line_loop;
+            } else if (std.mem.eql(u8, word, "box")) {
+                try scene.append(allocator, .{ .geom = geom.GeometryType{ .box = .{} } });
+                continue :line_loop;
+            } else if (std.mem.eql(u8, word, "mesh")) {
+                try scene.append(allocator, .{ .geom = geom.GeometryType{ .mesh = .{} } });
+                continue :line_loop;
+            }
+
+            // inline for (@typeInfo(geom.GeometryType).@"enum".fields) |field| {
+            //     if (std.mem.eql(u8, word, field.name)) {
+            //         // object_type = @field(geom.GeometryType, field.name);
+            //         scene.append(allocator, .{});
+            //         continue :line_loop;
+            //     }
+            // }
+
+            return ParsingError.UnknownObjectType;
+        }
+
+        // parse key-value pairs
+        var key: []u8 = &.{};
+        var val: []u8 = &.{};
+        try parseKeyVal(trim, &key, &val);
+        std.debug.print("{}: {s} {s}\n", .{ mode, key, val });
+
+        // assign info
+        switch (mode) {
+            .normal => {
+                if (std.mem.eql(u8, key, "num_threads")) {
+                    settings.thread_count = try std.fmt.parseInt(usize, val, 10);
+                } else if (std.mem.eql(u8, key, "num_samples")) {
+                    settings.num_samples = try std.fmt.parseInt(usize, val, 10);
+                } else if (std.mem.eql(u8, key, "window_width")) {
+                    settings.window_w = try std.fmt.parseInt(usize, val, 10);
+                } else if (std.mem.eql(u8, key, "window_height")) {
+                    settings.window_h = try std.fmt.parseInt(usize, val, 10);
+                } else if (std.mem.eql(u8, key, "camera_position")) {
+                    settings.camera_position = try parseVec3(val);
+                } else if (std.mem.eql(u8, key, "target_position")) {
+                    settings.target_position = try parseVec3(val);
+                } else if (std.mem.eql(u8, key, "up_vector")) {
+                    settings.up_vector = try parseVec3(val);
+                } else if (std.mem.eql(u8, key, "horizontal_fov")) {
+                    settings.field_of_view = try std.fmt.parseFloat(f32, val);
+                } else {
+                    return ParsingError.UnknownKey;
+                }
+            },
+            .object => {
+                var object: *geom.Object = &scene.items[scene.items.len - 1];
+
+                if (std.mem.eql(u8, key, "geom")) {
+                    switch (object.geom) {
+                        .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
+                        .box => |*value| value.*.size = try parseVec3(val),
+                        .mesh => |*value| value.* = try readASCIISTL(val, allocator),
+                    }
+                } else if (std.mem.eql(u8, key, "scale")) {
+                    const scale: f32 = try std.fmt.parseFloat(f32, val);
+                    object.trfm = m.matmul4(m.scale(scale), object.trfm);
+                } else if (std.mem.eql(u8, key, "rotate")) {
+                    const r = (try parseVec4(val)).data;
+                    object.trfm = m.matmul4(m.rotateAboutAxis(.{ .data = .{ r[0], r[1], r[2] } }, r[3]), object.trfm);
+                } else if (std.mem.eql(u8, key, "translate")) {
+                    const t = (try parseVec3(val));
+                    object.trfm = m.matmul4(m.translate(t), object.trfm);
+                } else if (std.mem.eql(u8, key, "refl")) {
+                    object.refl = try parseVec3(val);
+                } else if (std.mem.eql(u8, key, "emit")) {
+                    object.emit = try parseVec3(val);
+                } else if (std.mem.eql(u8, key, "mtrl")) {
+                    object.mtrl = try parseEnum(geom.Material, val);
+                } else {
+                    return ParsingError.UnknownKey;
+                }
+            },
+        }
+    } else |_| {} // end of file
+
+    return .{ .settings = settings, .scene = scene };
+}
+
+const STLReadError = error{ // TODO: possibly generalize this
+    FormatError,
+    FacetLimitExceeded,
+};
 
 pub fn readASCIISTL(
     rel_path: []const u8,
@@ -289,6 +462,15 @@ test "readASCIISTL --- runs" {
         std.debug.print("{} {} {}\n", .{ v2.data[0], v2.data[1], v2.data[2] });
         std.debug.print("\n", .{});
     }
+}
+
+test "readInput --- runs" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const allocator: std.mem.Allocator = arena.allocator();
+
+    _ = try readInput("input_test.txt", allocator);
 }
 
 // test "readInput --- reads an input file" {
