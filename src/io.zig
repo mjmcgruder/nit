@@ -30,6 +30,25 @@ const settings_map = std.StaticStringMap(SettingsEnum).initComptime(.{
     .{ "horizontal_fov", .field_of_view },
 });
 
+const ObjectSettingsEnum = enum {
+    geometry,
+    scale,
+    rotate,
+    translate,
+    reflectance,
+    emittance,
+    material,
+};
+const object_map = std.StaticStringMap(ObjectSettingsEnum).initComptime(.{
+    .{ "geom", .geometry },
+    .{ "scale", .scale },
+    .{ "rotate", .rotate },
+    .{ "translate", .translate },
+    .{ "refl", .reflectance },
+    .{ "emit", .emittance },
+    .{ "mtrl", .material },
+});
+
 pub const Pixel = struct {
     r: u8 = 0,
     g: u8 = 0,
@@ -242,27 +261,29 @@ pub fn readInput(
             .object => {
                 var object: *geom.Object = &scene.items[scene.items.len - 1];
 
-                if (std.mem.eql(u8, key, "geom")) {
-                    switch (object.geom) {
-                        .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
-                        .box => |*value| value.*.size = try parseVec3(val),
-                        .mesh => |*value| value.* = try readASCIISTL(val, allocator),
+                if (object_map.get(key)) |setting| {
+                    var transform: m.Mat4 = .{};
+
+                    switch (setting) {
+                        .geometry => {
+                            switch (object.geom) {
+                                .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
+                                .box => |*value| value.*.size = try parseVec3(val),
+                                .mesh => |*value| value.* = try readASCIISTL(val, allocator),
+                            }
+                        },
+                        .rotate => {
+                            const r = (try parseVec4(val)).data;
+                            transform = m.rotateAboutAxis(.{ .data = .{ r[0], r[1], r[2] } }, r[3]);
+                        },
+                        .scale => transform = m.scale(try std.fmt.parseFloat(f32, val)),
+                        .translate => transform = m.translate(try parseVec3(val)),
+                        .reflectance => object.refl = try parseVec3(val),
+                        .emittance => object.emit = try parseVec3(val),
+                        .material => object.mtrl = try parseEnum(geom.Material, val),
                     }
-                } else if (std.mem.eql(u8, key, "scale")) {
-                    const scale: f32 = try std.fmt.parseFloat(f32, val);
-                    object.trfm = m.matmul4(m.scale(scale), object.trfm);
-                } else if (std.mem.eql(u8, key, "rotate")) {
-                    const r = (try parseVec4(val)).data;
-                    object.trfm = m.matmul4(m.rotateAboutAxis(.{ .data = .{ r[0], r[1], r[2] } }, r[3]), object.trfm);
-                } else if (std.mem.eql(u8, key, "translate")) {
-                    const t = (try parseVec3(val));
-                    object.trfm = m.matmul4(m.translate(t), object.trfm);
-                } else if (std.mem.eql(u8, key, "refl")) {
-                    object.refl = try parseVec3(val);
-                } else if (std.mem.eql(u8, key, "emit")) {
-                    object.emit = try parseVec3(val);
-                } else if (std.mem.eql(u8, key, "mtrl")) {
-                    object.mtrl = try parseEnum(geom.Material, val);
+
+                    object.trfm = m.matmul4(transform, object.trfm); // TODO: group transform terms?
                 } else {
                     return ParsingError.UnknownKey;
                 }

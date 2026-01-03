@@ -91,7 +91,7 @@ pub fn invertTransform(mat: Mat4) Mat4 {
     return inv;
 }
 
-pub fn translate(vec: Vec3) Mat4 {  // TODO: this naming scheme is... bad?
+pub fn translate(vec: Vec3) Mat4 { // TODO: this naming scheme is... bad?
     return .{ .data = .{
         .{ 1.0, 0.0, 0.0, vec.data[0] },
         .{ 0.0, 1.0, 0.0, vec.data[1] },
