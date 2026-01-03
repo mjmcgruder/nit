@@ -186,7 +186,7 @@ fn seekWhitespace(str: []u8, start: usize) usize {
     while (head < str.len and !std.ascii.isWhitespace(str[head])) : (head += 1) {}
     return head;
 }
-fn seekNonWhitespace(str: []u8, start: usize) usize {
+fn seekPastWhitespace(str: []u8, start: usize) usize {
     var head: usize = start;
     while (head < str.len and std.ascii.isWhitespace(str[head])) : (head += 1) {}
     return head;
@@ -196,9 +196,12 @@ fn seekCharacter(str: []u8, start: usize, char: u8) usize {
     while (head < str.len and str[head] != char) : (head += 1) {}
     return head;
 }
+fn seekNext(str: []u8, start: usize) usize {
+    return if (start + 1 < str.len) start + 1 else start;
+}
 
 fn skipWhiteSpace(str: []u8) []u8 {
-    return str[seekNonWhitespace(str, 0)..];
+    return str[seekPastWhitespace(str, 0)..];
 }
 
 fn getNextWord(str: []u8, word: *[]u8) []u8 {
@@ -227,28 +230,47 @@ fn parseEnum(enum_type: type, string: []u8) !enum_type {
 }
 
 fn parseVec3(str: []u8) !m.Vec3 {
-    const begin = seekNonWhitespace(str, 0);
-    const end_elem0 = seekCharacter(str, begin, ',');
-    const end_elem1 = seekCharacter(str, end_elem0 + 1, ',');
-    const end_elem2 = seekWhitespace(str, end_elem1 + 1);
+    const begin_elem0 = seekPastWhitespace(str, 0);
+    const end_elem0 = seekCharacter(str, begin_elem0, ',');
+    const elem0: []u8 = str[begin_elem0..end_elem0];
+    if (elem0.len == 0) return ParsingError.FormatError;
+    const begin_elem1 = seekNext(str, end_elem0);
+    const end_elem1 = seekCharacter(str, begin_elem1, ',');
+    const elem1: []u8 = str[begin_elem1..end_elem1];
+    if (elem1.len == 0) return ParsingError.FormatError;
+    const begin_elem2 = seekNext(str, end_elem1);
+    const end_elem2 = seekWhitespace(str, begin_elem2);
+    const elem2: []u8 = str[begin_elem2..end_elem2];
+    if (elem2.len == 0) return ParsingError.FormatError;
     return m.Vec3{ .data = .{
-        try std.fmt.parseFloat(f32, str[begin..end_elem0]),
-        try std.fmt.parseFloat(f32, str[(end_elem0 + 1)..end_elem1]),
-        try std.fmt.parseFloat(f32, str[(end_elem1 + 1)..end_elem2]),
+        try std.fmt.parseFloat(f32, elem0),
+        try std.fmt.parseFloat(f32, elem1),
+        try std.fmt.parseFloat(f32, elem2),
     } };
 }
 
 fn parseVec4(str: []u8) !m.Vec4 {
-    const begin = seekNonWhitespace(str, 0);
-    const end_elem0 = seekCharacter(str, begin, ',');
-    const end_elem1 = seekCharacter(str, end_elem0 + 1, ',');
-    const end_elem2 = seekCharacter(str, end_elem1 + 1, ',');
-    const end_elem3 = seekWhitespace(str, end_elem2 + 1);
+    const begin_elem0 = seekPastWhitespace(str, 0);
+    const end_elem0 = seekCharacter(str, begin_elem0, ',');
+    const elem0: []u8 = str[begin_elem0..end_elem0];
+    if (elem0.len == 0) return ParsingError.FormatError;
+    const begin_elem1 = seekNext(str, end_elem0);
+    const end_elem1 = seekCharacter(str, begin_elem1, ',');
+    const elem1: []u8 = str[begin_elem1..end_elem1];
+    if (elem1.len == 0) return ParsingError.FormatError;
+    const begin_elem2 = seekNext(str, end_elem1);
+    const end_elem2 = seekCharacter(str, begin_elem2, ',');
+    const elem2: []u8 = str[begin_elem2..end_elem2];
+    if (elem2.len == 0) return ParsingError.FormatError;
+    const begin_elem3 = seekNext(str, end_elem2);
+    const end_elem3 = seekWhitespace(str, begin_elem3);
+    const elem3: []u8 = str[begin_elem3..end_elem3];
+    if (elem3.len == 0) return ParsingError.FormatError;
     return m.Vec4{ .data = .{
-        try std.fmt.parseFloat(f32, str[begin..end_elem0]),
-        try std.fmt.parseFloat(f32, str[(end_elem0 + 1)..end_elem1]),
-        try std.fmt.parseFloat(f32, str[(end_elem1 + 1)..end_elem2]),
-        try std.fmt.parseFloat(f32, str[(end_elem2 + 1)..end_elem3]),
+        try std.fmt.parseFloat(f32, elem0),
+        try std.fmt.parseFloat(f32, elem1),
+        try std.fmt.parseFloat(f32, elem2),
+        try std.fmt.parseFloat(f32, elem3),
     } };
 }
 

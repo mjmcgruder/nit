@@ -240,76 +240,74 @@ pub fn main() !void {
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-
     const allocator: std.mem.Allocator = arena.allocator();
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    // if (args.len != 2) {
-    //     try stdout.print("  usage: metropolis <input_file>\n", .{});
-    //     return;
-    // }
+    if (args.len != 2) {
+        try stdout.print("  usage: metropolis <input_file>\n", .{});
+        return;
+    }
 
-    // var settings = io.Settings{};
-    // var scene_list = std.ArrayList(geom.Object).empty;
-    // try io.readInput(allocator, args[1], &settings, &scene_list);
-    // const scene: []geom.Object = scene_list.items;
-    // defer scene_list.deinit(allocator);
+    const input = try io.readInput(args[1], allocator);
 
-    const settings = io.Settings{};
-    var scene_list = [_]geom.Object{
-        geom.Object{
-            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 1.5, 0.75, 1.5 } } } },
-            .trfm = m.translate(.{ .data = .{ 1.0, 0.0, 0.0 } }),
-            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.diffuse,
-        },
-        geom.Object{
-            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
-            .trfm = m.translate(.{ .data = .{ 2.0, 0.75 + 0.2 * 0.99, 0.0 } }),
-            .refl = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .emit = .{ .data = .{ 12.0, 12.0, 12.0 } },
-            .mtrl = geom.Material.diffuse,
-        },
-        geom.Object{
-            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
-            .trfm = m.matmul4(
-                m.translate(.{ .data = .{ 1.9, -0.75 + 0.2, 0.5 } }),
-                m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, -15.0),
-            ),
-            .refl = .{ .data = .{ 0.2, 1.0, 0.2 } },
-            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.diffuse,
-        },
-        geom.Object{
-            .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.4, 0.2 } } } },
-            .trfm = m.matmul4(
-                m.translate(.{ .data = .{ 2.1, -0.75 + 0.4, -0.6 } }),
-                m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, 35.0),
-            ),
-            .refl = .{ .data = .{ 1.0, 0.2, 0.2 } },
-            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.diffuse,
-        },
-        geom.Object{
-            .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
-            .trfm = m.translate(.{ .data = .{ 1.5, -0.75 + 0.2, 0.0 } }),
-            .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
-            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.specular,
-        },
-        geom.Object{
-            .geom = geom.GeometryType{ .mesh = try io.readASCIISTL("Suzanne.stl", allocator) }, // TODO: deinit this? (arena takes care of it in this case but still?)
-            .trfm = m.matmul4(m.translate(.{ .data = .{ 2.0, 0.0, 0.6 } }), m.matmul4(m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 1.0 } }, -110.0), m.scale(0.4))),
-            .refl = .{ .data = .{ 0.2, 0.2, 1.0 } },
-            .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
-            .mtrl = geom.Material.diffuse,
-        },
-    };
+    const settings: io.Settings = input.settings;
+    const scene: []geom.Object = input.scene.items;
 
-    const scene: []geom.Object = &scene_list;
+    // const settings = io.Settings{};
+    // var scene_list = [_]geom.Object{
+    //     geom.Object{
+    //         .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 1.5, 0.75, 1.5 } } } },
+    //         .trfm = m.translate(.{ .data = .{ 1.0, 0.0, 0.0 } }),
+    //         .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+    //         .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+    //         .mtrl = geom.Material.diffuse,
+    //     },
+    //     geom.Object{
+    //         .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
+    //         .trfm = m.translate(.{ .data = .{ 2.0, 0.75 + 0.2 * 0.99, 0.0 } }),
+    //         .refl = .{ .data = .{ 0.0, 0.0, 0.0 } },
+    //         .emit = .{ .data = .{ 12.0, 12.0, 12.0 } },
+    //         .mtrl = geom.Material.diffuse,
+    //     },
+    //     geom.Object{
+    //         .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.2, 0.2 } } } },
+    //         .trfm = m.matmul4(
+    //             m.translate(.{ .data = .{ 1.9, -0.75 + 0.2, 0.5 } }),
+    //             m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, -15.0),
+    //         ),
+    //         .refl = .{ .data = .{ 0.2, 1.0, 0.2 } },
+    //         .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+    //         .mtrl = geom.Material.diffuse,
+    //     },
+    //     geom.Object{
+    //         .geom = geom.GeometryType{ .box = .{ .size = .{ .data = .{ 0.2, 0.4, 0.2 } } } },
+    //         .trfm = m.matmul4(
+    //             m.translate(.{ .data = .{ 2.1, -0.75 + 0.4, -0.6 } }),
+    //             m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 0.0 } }, 35.0),
+    //         ),
+    //         .refl = .{ .data = .{ 1.0, 0.2, 0.2 } },
+    //         .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+    //         .mtrl = geom.Material.diffuse,
+    //     },
+    //     geom.Object{
+    //         .geom = geom.GeometryType{ .sphere = .{ .r = 0.2 } },
+    //         .trfm = m.translate(.{ .data = .{ 1.5, -0.75 + 0.2, 0.0 } }),
+    //         .refl = .{ .data = .{ 1.0, 1.0, 1.0 } },
+    //         .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+    //         .mtrl = geom.Material.specular,
+    //     },
+    //     geom.Object{
+    //         .geom = geom.GeometryType{ .mesh = try io.readASCIISTL("Suzanne.stl", allocator) }, // TODO: deinit this? (arena takes care of it in this case but still?)
+    //         .trfm = m.matmul4(m.translate(.{ .data = .{ 2.0, 0.0, 0.6 } }), m.matmul4(m.rotateAboutAxis(.{ .data = .{ 0.0, 1.0, 1.0 } }, -110.0), m.scale(0.4))),
+    //         .refl = .{ .data = .{ 0.2, 0.2, 1.0 } },
+    //         .emit = .{ .data = .{ 0.0, 0.0, 0.0 } },
+    //         .mtrl = geom.Material.diffuse,
+    //     },
+    // };
+    //
+    // const scene: []geom.Object = &scene_list;
 
     // initialization
 
