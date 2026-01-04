@@ -72,7 +72,6 @@ pub fn mattnp4(mat: Mat4) Mat4 {
 /// Translation may be arbitrary. Bottom row values must be zero, except the final value which
 /// should be 1.
 pub fn invertTransform(mat: Mat4) Mat4 {
-    // TODO: assert this is actually a normalized transform in non-release / safe builds?
     const tnp: Mat4 = mattnp4(mat);
     const ixsq: f32 = 1.0 / @reduce(.Add, tnp.data[0] * tnp.data[0]);
     const iysq: f32 = 1.0 / @reduce(.Add, tnp.data[1] * tnp.data[1]);
@@ -516,9 +515,9 @@ test "matvec4 --- orthonormal, transpose, identity" {
 
 test "invertTransform --- recovers identity" {
     const mat: Mat4 = .{ .data = .{
-        .{ 0.0, 1.0, 0.0, 0.2 },
+        .{ 0.0, 7.0, 0.0, 0.2 },
         .{ 0.0, 0.0, 1.0, 7.0 },
-        .{ 1.0, 0.0, 0.0, 2.7 },
+        .{ 3.0, 0.0, 0.0, 2.7 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } };
 

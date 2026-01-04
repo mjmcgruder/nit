@@ -153,7 +153,7 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
 
     const mray: Ray = .{
         .o = m.toVec3(m.matvec4(itfm, m.toHomogeneousPos(wray.o))),
-        .d = m.toVec3(m.matvec4(itfm, m.toHomogeneousDir(wray.d))),
+        .d = m.normalize(m.toVec3(m.matvec4(itfm, m.toHomogeneousDir(wray.d)))),
     };
 
     var intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
