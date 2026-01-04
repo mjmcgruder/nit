@@ -250,3 +250,18 @@ test "intersectRayBox --- box behind ray origin" {
         try std.testing.expect(true);
     }
 }
+
+test "intersectRayTriangle --- glance" {
+    const tri: Triangle = .{ .vertices = .{
+        .{ .data = .{ 0.0, 0.0, 0.0 } },
+        .{ .data = .{ 1.0, 0.0, 0.0 } },
+        .{ .data = .{ 0.0, 1.0, 0.0 } },
+    } };
+    const ray: Ray = .{
+        .o = .{ .data = .{ 1.0 + 0.1, 1.0 + 0.2, -1.0 } },
+        .d = m.normalize(.{ .data = .{ -1.0, -1.0, 1.0 } }),
+    };
+    const result = intersectRayTriangle(ray, tri) orelse unreachable;
+    try std.testing.expectApproxEqRel(@sqrt(3.0), result.dist, 1e-5);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, -1.0 } }, result.norm);
+}
