@@ -87,22 +87,22 @@ const ParsingError = error{
     NotImplemented,
 };
 
-fn seekWhitespace(str: []u8, start: usize) usize {
+fn seekWhitespace(str: []const u8, start: usize) usize {
     var head: usize = start;
     while (head < str.len and !std.ascii.isWhitespace(str[head])) : (head += 1) {}
     return head;
 }
-fn seekPastWhitespace(str: []u8, start: usize) usize {
+fn seekPastWhitespace(str: []const u8, start: usize) usize {
     var head: usize = start;
     while (head < str.len and std.ascii.isWhitespace(str[head])) : (head += 1) {}
     return head;
 }
-fn seekCharacter(str: []u8, start: usize, char: u8) usize {
+fn seekCharacter(str: []const u8, start: usize, char: u8) usize {
     var head: usize = start;
     while (head < str.len and str[head] != char) : (head += 1) {}
     return head;
 }
-fn seekNext(str: []u8, start: usize) usize {
+fn seekNext(str: []const u8, start: usize) usize {
     return if (start + 1 < str.len) start + 1 else start;
 }
 
@@ -126,7 +126,7 @@ fn parseKeyVal(str: []u8, key: *[]u8, val: *[]u8) !void {
     trim = getNextWord(trim, val);
 }
 
-fn parseEnum(enum_type: type, string: []u8) !enum_type {
+fn parseEnum(enum_type: type, string: []const u8) !enum_type {
     inline for (@typeInfo(enum_type).@"enum".fields) |field| {
         if (std.mem.eql(u8, string, field.name)) {
             return @field(enum_type, field.name);
@@ -135,18 +135,18 @@ fn parseEnum(enum_type: type, string: []u8) !enum_type {
     return ParsingError.UnknownEnumValue;
 }
 
-fn parseVec3(str: []u8) !m.Vec3 {
+fn parseVec3(str: []const u8) !m.Vec3 {
     const begin_elem0 = seekPastWhitespace(str, 0);
     const end_elem0 = seekCharacter(str, begin_elem0, ',');
-    const elem0: []u8 = str[begin_elem0..end_elem0];
+    const elem0: []const u8 = str[begin_elem0..end_elem0];
     if (elem0.len == 0) return ParsingError.FormatError;
     const begin_elem1 = seekNext(str, end_elem0);
     const end_elem1 = seekCharacter(str, begin_elem1, ',');
-    const elem1: []u8 = str[begin_elem1..end_elem1];
+    const elem1: []const u8 = str[begin_elem1..end_elem1];
     if (elem1.len == 0) return ParsingError.FormatError;
     const begin_elem2 = seekNext(str, end_elem1);
     const end_elem2 = seekWhitespace(str, begin_elem2);
-    const elem2: []u8 = str[begin_elem2..end_elem2];
+    const elem2: []const u8 = str[begin_elem2..end_elem2];
     if (elem2.len == 0) return ParsingError.FormatError;
     return m.Vec3{ .data = .{
         try std.fmt.parseFloat(f32, elem0),
@@ -155,22 +155,22 @@ fn parseVec3(str: []u8) !m.Vec3 {
     } };
 }
 
-fn parseVec4(str: []u8) !m.Vec4 {
+fn parseVec4(str: []const u8) !m.Vec4 {
     const begin_elem0 = seekPastWhitespace(str, 0);
     const end_elem0 = seekCharacter(str, begin_elem0, ',');
-    const elem0: []u8 = str[begin_elem0..end_elem0];
+    const elem0: []const u8 = str[begin_elem0..end_elem0];
     if (elem0.len == 0) return ParsingError.FormatError;
     const begin_elem1 = seekNext(str, end_elem0);
     const end_elem1 = seekCharacter(str, begin_elem1, ',');
-    const elem1: []u8 = str[begin_elem1..end_elem1];
+    const elem1: []const u8 = str[begin_elem1..end_elem1];
     if (elem1.len == 0) return ParsingError.FormatError;
     const begin_elem2 = seekNext(str, end_elem1);
     const end_elem2 = seekCharacter(str, begin_elem2, ',');
-    const elem2: []u8 = str[begin_elem2..end_elem2];
+    const elem2: []const u8 = str[begin_elem2..end_elem2];
     if (elem2.len == 0) return ParsingError.FormatError;
     const begin_elem3 = seekNext(str, end_elem2);
     const end_elem3 = seekWhitespace(str, begin_elem3);
-    const elem3: []u8 = str[begin_elem3..end_elem3];
+    const elem3: []const u8 = str[begin_elem3..end_elem3];
     if (elem3.len == 0) return ParsingError.FormatError;
     return m.Vec4{ .data = .{
         try std.fmt.parseFloat(f32, elem0),
@@ -244,8 +244,6 @@ pub fn readInput(
         var val: []u8 = &.{};
         try parseKeyVal(trim, &key, &val);
 
-        // TODO: switch most of the function inputs to []const
-
         // assign info
         switch (mode) {
             .normal => {
@@ -289,7 +287,7 @@ pub fn readInput(
                         .material => object.mtrl = try parseEnum(geom.Material, val),
                     }
 
-                    object.trfm = m.matmul4(transform, object.trfm); // TODO: group transform terms?
+                    object.trfm = m.matmul4(transform, object.trfm);
                 } else {
                     return ParsingError.UnknownKey;
                 }
