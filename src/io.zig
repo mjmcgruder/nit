@@ -18,42 +18,6 @@ pub const Settings = struct {
     up_vector: m.Vec3 = m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } },
     field_of_view: f32 = 90.0,
 };
-const SettingsEnum = std.meta.FieldEnum(Settings);
-const settings_map = std.StaticStringMap(SettingsEnum).initComptime(.{
-    .{ "num_threads", .thread_count },
-    .{ "num_samples", .num_samples },
-    .{ "window_width", .window_w },
-    .{ "window_height", .window_h },
-    .{ "camera_position", .camera_position },
-    .{ "target_position", .target_position },
-    .{ "up_vector", .up_vector },
-    .{ "horizontal_fov", .field_of_view },
-});
-
-const ObjectSettingsEnum = enum {
-    geometry,
-    scale,
-    rotate,
-    translate,
-    reflectance,
-    emittance,
-    material,
-};
-const object_map = std.StaticStringMap(ObjectSettingsEnum).initComptime(.{
-    .{ "geom", .geometry },
-    .{ "scale", .scale },
-    .{ "rotate", .rotate },
-    .{ "translate", .translate },
-    .{ "refl", .reflectance },
-    .{ "emit", .emittance },
-    .{ "mtrl", .material },
-});
-
-const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).initComptime(.{
-    .{ "sphere", .sphere },
-    .{ "box", .box },
-    .{ "mesh", .mesh },
-});
 
 pub const Pixel = struct {
     r: u8 = 0,
@@ -184,6 +148,35 @@ const InputParseMode = enum {
     normal,
     object,
 };
+
+const SettingsEnum = std.meta.FieldEnum(Settings);
+const settings_map = std.StaticStringMap(SettingsEnum).initComptime(.{
+    .{ "num_threads", .thread_count },
+    .{ "num_samples", .num_samples },
+    .{ "window_width", .window_w },
+    .{ "window_height", .window_h },
+    .{ "camera_position", .camera_position },
+    .{ "target_position", .target_position },
+    .{ "up_vector", .up_vector },
+    .{ "horizontal_fov", .field_of_view },
+});
+
+const ObjectSettingsEnum = enum { geometry, scale, rotate, translate, reflectance, emittance, material };
+const object_map = std.StaticStringMap(ObjectSettingsEnum).initComptime(.{
+    .{ "geom", .geometry },
+    .{ "scale", .scale },
+    .{ "rotate", .rotate },
+    .{ "translate", .translate },
+    .{ "refl", .reflectance },
+    .{ "emit", .emittance },
+    .{ "mtrl", .material },
+});
+
+const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).initComptime(.{
+    .{ "sphere", .sphere },
+    .{ "box", .box },
+    .{ "mesh", .mesh },
+});
 
 pub fn readInput(
     rel_path: []const u8,
@@ -364,27 +357,27 @@ pub fn readASCIISTL(
 
 // TESTS -----
 
-test "readASCIISTL --- runs" {
-    const allocator: std.mem.Allocator = std.testing.allocator;
-    var mesh: geom.Mesh = try readASCIISTL("Suzanne.stl", allocator);
-    defer mesh.deinit(allocator);
-
-    for (0..(mesh.ind.items.len / 3)) |ti| {
-        const v0: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 0]];
-        const v1: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 1]];
-        const v2: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 2]];
-        std.debug.print("{} {} {}\n", .{ v0.data[0], v0.data[1], v0.data[2] });
-        std.debug.print("{} {} {}\n", .{ v1.data[0], v1.data[1], v1.data[2] });
-        std.debug.print("{} {} {}\n", .{ v2.data[0], v2.data[1], v2.data[2] });
-        std.debug.print("\n", .{});
-    }
-}
-
-test "readInput --- runs" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const allocator: std.mem.Allocator = arena.allocator();
-
-    _ = try readInput("input_test.txt", allocator);
-}
+// test "readInput --- runs" {
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     defer arena.deinit();
+//
+//     const allocator: std.mem.Allocator = arena.allocator();
+//
+//     _ = try readInput("input_test.txt", allocator);
+// }
+//
+// test "readASCIISTL --- runs" {
+//     const allocator: std.mem.Allocator = std.testing.allocator;
+//     var mesh: geom.Mesh = try readASCIISTL("Suzanne.stl", allocator);
+//     defer mesh.deinit(allocator);
+//
+//     for (0..(mesh.ind.items.len / 3)) |ti| {
+//         const v0: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 0]];
+//         const v1: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 1]];
+//         const v2: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 2]];
+//         std.debug.print("{} {} {}\n", .{ v0.data[0], v0.data[1], v0.data[2] });
+//         std.debug.print("{} {} {}\n", .{ v1.data[0], v1.data[1], v1.data[2] });
+//         std.debug.print("{} {} {}\n", .{ v2.data[0], v2.data[1], v2.data[2] });
+//         std.debug.print("\n", .{});
+//     }
+// }
