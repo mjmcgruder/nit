@@ -1,23 +1,36 @@
-thread_count    = 16
-num_samples     = 8192
-window_w        = 1920
-window_h        = 1080
-camera_position = 1.2,-0.1,-0.4
-target_position = 1.2,-0.1,0.5
+# this is a comment
+
+num_threads     = 8
+num_samples     = 1024
+window_width    = 1920
+window_height   = 1080
+camera_position = -2.0,0.0,0.0
+target_position = 0.0,0.0,0.0
 up_vector       = 0.0,1.0,0.0
-field_of_view   = 90.0
+horizontal_fov  = 90.0
 
-sphere {
-    cntr = 1.4,0.0,-0.4
-    rdus = 0.1
+object sphere
+    geom = 0.1
+    scale = 0.8  # TODO: fix this, scale on the sphere isn't working?
+    translate = 0.0,0.0,-1.0
     refl = 1.0,1.0,1.0
-    emit = 12.0,12.0,12.0
-    mtrl = diffuse }
-
-sphere {
-    cntr = 1.0,0.0,1000.5
-    rdus = 1000.0
-    refl = 0.8,0.2,0.2
     emit = 0.0,0.0,0.0
     mtrl = specular
-}
+end
+
+object box
+    geom = 1.0,1.0,1.0
+    scale = 0.1
+    rotate = 1,1,1,45
+    translate = 0.0,0.0,+1.0
+    refl = 0.0,0.0,0.0
+    emit = 12.0,12.0,12.0
+    mtrl = diffuse
+end
+
+object mesh
+    geom = src/test_data/unit_tet.stl
+    refl = 1.0,1.0,1.0
+    emit = 0.0,0.0,0.0
+    mtrl = diffuse
+end

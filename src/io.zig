@@ -357,27 +357,71 @@ pub fn readASCIISTL(
 
 // TESTS -----
 
-// test "readInput --- runs" {
-//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-//     defer arena.deinit();
-//
-//     const allocator: std.mem.Allocator = arena.allocator();
-//
-//     _ = try readInput("input_test.txt", allocator);
-// }
-//
-// test "readASCIISTL --- runs" {
-//     const allocator: std.mem.Allocator = std.testing.allocator;
-//     var mesh: geom.Mesh = try readASCIISTL("Suzanne.stl", allocator);
-//     defer mesh.deinit(allocator);
-//
-//     for (0..(mesh.ind.items.len / 3)) |ti| {
-//         const v0: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 0]];
-//         const v1: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 1]];
-//         const v2: m.Vec3 = mesh.vrt.items[mesh.ind.items[3 * ti + 2]];
-//         std.debug.print("{} {} {}\n", .{ v0.data[0], v0.data[1], v0.data[2] });
-//         std.debug.print("{} {} {}\n", .{ v1.data[0], v1.data[1], v1.data[2] });
-//         std.debug.print("{} {} {}\n", .{ v2.data[0], v2.data[1], v2.data[2] });
-//         std.debug.print("\n", .{});
-//     }
-// }
+test "readInput --- runs" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator: std.mem.Allocator = arena.allocator();
+    const input = try readInput("src/test_data/input.txt", allocator);
+
+    const settings = input.settings;
+    try std.testing.expectEqual(settings.thread_count, 8);
+    try std.testing.expectEqual(settings.num_samples, 1024);
+    try std.testing.expectEqual(settings.window_w, 1920);
+    try std.testing.expectEqual(settings.window_h, 1080);
+    try std.testing.expectEqual(settings.camera_position, m.Vec3{ .data = .{ -2.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(settings.target_position, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(settings.up_vector, m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } });
+    try std.testing.expectEqual(settings.field_of_view, 90.0);
+
+    const scene = input.scene.items;
+
+    try std.testing.expectEqual(scene[0].geom.sphere.r, 0.1);
+    try std.testing.expectEqual(scene[0].trfm, m.Mat4{ .data = .{
+        .{ 0.8, 0.0, 0.0, 0.0 },
+        .{ 0.0, 0.8, 0.0, 0.0 },
+        .{ 0.0, 0.0, 0.8, -1.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } });
+    try std.testing.expectEqual(scene[0].refl, m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
+    try std.testing.expectEqual(scene[0].emit, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(scene[0].mtrl, geom.Material.specular);
+
+    try std.testing.expectEqual(scene[1].geom.box.size, m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
+    try std.testing.expectEqual(scene[1].trfm, m.Mat4{ .data = .{
+        .{ 0.08047379, -0.031061722, 0.050587934, 0 },
+        .{ 0.050587934, 0.08047379, -0.031061722, 0 },
+        .{ -0.031061722, 0.050587934, 0.08047379, 1 },
+        .{ 0, 0, 0, 1 },
+    } });
+    try std.testing.expectEqual(scene[1].refl, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(scene[1].emit, m.Vec3{ .data = .{ 12.0, 12.0, 12.0 } });
+    try std.testing.expectEqual(scene[1].mtrl, geom.Material.diffuse);
+
+    const mesh: geom.Mesh = scene[2].geom.mesh;
+
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[0]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt.items[mesh.ind.items[1]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[2]]);
+
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[3]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[4]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt.items[mesh.ind.items[5]]);
+
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[6]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[7]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[8]]);
+
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[9]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt.items[mesh.ind.items[10]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[11]]);
+
+    try std.testing.expectEqual(scene[2].trfm, m.Mat4{ .data = .{
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    } });
+    try std.testing.expectEqual(scene[2].refl, m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
+    try std.testing.expectEqual(scene[2].emit, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(scene[2].mtrl, geom.Material.diffuse);
+}

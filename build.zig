@@ -22,12 +22,6 @@ pub fn build(b: *std.Build) !void {
         "force use of llvm",
     );
 
-    const build_tests: bool = b.option(
-        bool,
-        "build-tests",
-        "Build the test suite",
-    ) orelse false;
-
     const root_module = b.createModule(.{
         .root_source_file = b.path("metropolis.zig"),
         .target = target_options,
@@ -44,20 +38,4 @@ pub fn build(b: *std.Build) !void {
         .use_llvm = use_llvm,
     });
     b.installArtifact(exe);
-
-    // test suite
-
-    if (build_tests) {
-        const unit_tests = b.addTest(.{
-            .name = "test",
-            .root_module = root_module,
-            .use_llvm = use_llvm,
-        });
-        b.installArtifact(unit_tests);
-        b.installDirectory(.{
-            .source_dir = b.path("src/test_data"),
-            .install_dir = .bin,
-            .install_subdir = "test_data",
-        });
-    }
 }
