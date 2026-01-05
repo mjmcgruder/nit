@@ -151,9 +151,10 @@ pub const IntersectResult = struct {
 pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
     const itfm: m.Mat4 = m.invertTransform(obj.trfm);
 
+    const mrayd = m.toVec3(m.matvec4(itfm, m.toHomogeneousDir(wray.d)));
     const mray: Ray = .{
         .o = m.toVec3(m.matvec4(itfm, m.toHomogeneousPos(wray.o))),
-        .d = m.normalize(m.toVec3(m.matvec4(itfm, m.toHomogeneousDir(wray.d)))),
+        .d = m.normalize(mrayd),
     };
 
     var intersect_geom: ?IntersectResultRayGeom = switch (obj.geom) {
@@ -163,9 +164,10 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
     };
 
     if (intersect_geom) |*geom_result| {
-        geom_result.norm = m.toVec3(
+        geom_result.dist *= m.mag(wray.d) / m.mag(mrayd);  // TODO: could this be achieved by not normalizing mrayd?
+        geom_result.norm = m.normalize(m.toVec3(  // TODO: with this normalize, you could avoid normalizing in any individual intersection function?
             m.matvec4(obj.trfm, m.toHomogeneousDir(geom_result.norm)),
-        );
+        ));
         return IntersectResult{
             .geom = geom_result.*,
             .refl = obj.refl,
