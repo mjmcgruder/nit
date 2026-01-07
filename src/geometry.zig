@@ -15,6 +15,11 @@ pub const Box = struct {
     size: m.Vec3 = .{ .data = .{ 1.0, 1.0, 1.0 } },
 };
 
+pub const AxisAlignedBoundingBox = struct {
+    center: m.Vec3 = .{},
+    size: m.Vec3 = .{}, // note this is max dist from center in each direction (half of net length)
+};
+
 pub const Triangle = struct {
     vertices: [3]m.Vec3,
 };
@@ -22,12 +27,32 @@ pub const Triangle = struct {
 pub const Mesh = struct {
     vrt: std.ArrayList(m.Vec3) = .empty,
     ind: std.ArrayList(u32) = .empty,
+    bbox: AxisAlignedBoundingBox = .{},
 
     pub fn deinit(self: *Mesh, allocator: std.mem.Allocator) void {
         self.vrt.deinit(allocator);
         self.ind.deinit(allocator);
     }
 };
+
+pub fn buildMeshBBox(mesh: *Mesh) void {
+    var min: m.Vec3 = m.set3(std.math.floatMax(f32));
+    var max: m.Vec3 = m.set3(-std.math.floatMax(f32));
+
+    for (mesh.vrt.items) |vertex| {
+        for (0..3) |dim| {
+            if (vertex.data[dim] < min.data[dim]) {
+                min.data[dim] = vertex.data[dim];
+            }
+            if (vertex.data[dim] > max.data[dim]) {
+                max.data[dim] = vertex.data[dim];
+            }
+        }
+    }
+
+    mesh.bbox.size = m.mul(m.sub(max, min), 0.5);
+    mesh.bbox.center = m.mul(m.add(max, min), 0.5);
+}
 
 const IntersectResultRayGeom = struct {
     dist: f32 = 0.0,
@@ -101,23 +126,29 @@ fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
 }
 
 fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
-    var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
-    std.debug.assert(mesh.ind.items.len % 3 == 0);
-    const ntri: usize = mesh.ind.items.len / 3;
-    var it: usize = 0;
-    while (it < ntri) : (it += 1) {
-        const triangle: Triangle = .{ .vertices = .{
-            mesh.vrt.items[mesh.ind.items[3 * it + 0]],
-            mesh.vrt.items[mesh.ind.items[3 * it + 1]],
-            mesh.vrt.items[mesh.ind.items[3 * it + 2]],
-        } };
-        if (intersectRayTriangle(ray, triangle)) |intersect| {
-            if (intersect.dist < result.dist) {
-                result = intersect;
+    const box: Box = .{ .size = mesh.bbox.size };
+
+    if (intersectRayBox(.{ .d = ray.d, .o = m.sub(ray.o, mesh.bbox.center) }, box)) |_| {
+        var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
+        std.debug.assert(mesh.ind.items.len % 3 == 0);
+        const ntri: usize = mesh.ind.items.len / 3;
+        var it: usize = 0;
+        while (it < ntri) : (it += 1) {
+            const triangle: Triangle = .{ .vertices = .{
+                mesh.vrt.items[mesh.ind.items[3 * it + 0]],
+                mesh.vrt.items[mesh.ind.items[3 * it + 1]],
+                mesh.vrt.items[mesh.ind.items[3 * it + 2]],
+            } };
+            if (intersectRayTriangle(ray, triangle)) |intersect| {
+                if (intersect.dist < result.dist) {
+                    result = intersect;
+                }
             }
         }
+        return if (result.dist == std.math.floatMax(f32)) null else result;
     }
-    return if (result.dist == std.math.floatMax(f32)) null else result;
+
+    return null;
 }
 
 pub const GeometryType = union(enum) {
@@ -164,8 +195,8 @@ pub fn intersectRayObject(wray: Ray, obj: Object) ?IntersectResult {
     };
 
     if (intersect_geom) |*geom_result| {
-        geom_result.dist *= m.mag(wray.d) / m.mag(mrayd);  // TODO: could this be achieved by not normalizing mrayd?
-        geom_result.norm = m.normalize(m.toVec3(  // TODO: with this normalize, you could avoid normalizing in any individual intersection function?
+        geom_result.dist *= m.mag(wray.d) / m.mag(mrayd); // TODO: could this be achieved by not normalizing mrayd?
+        geom_result.norm = m.normalize(m.toVec3( // TODO: with this normalize, you could avoid normalizing in any individual intersection function?
             m.matvec4(obj.trfm, m.toHomogeneousDir(geom_result.norm)),
         ));
         return IntersectResult{

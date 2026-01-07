@@ -319,7 +319,10 @@ pub fn readASCIISTL(
     for (0..(1 << 27)) |_| {
         trim = try reader.takeDelimiterInclusive('\n');
         trim = getNextWord(trim, &word);
-        if (std.mem.eql(u8, word, "endsolid")) return result;
+        if (std.mem.eql(u8, word, "endsolid")) {
+            geom.buildMeshBBox(&result);
+            return result;
+        }
         if (!std.mem.eql(u8, word, "facet")) return STLReadError.FormatError;
         trim = getNextWord(trim, &word);
         if (!std.mem.eql(u8, word, "normal")) return STLReadError.FormatError;

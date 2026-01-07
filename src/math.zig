@@ -130,6 +130,14 @@ pub const unit_z: Vec3 = Vec3{ .data = .{ 0.0, 0.0, 1.0 } };
 
 pub const eps: comptime_float = std.math.floatEps(f32);
 
+pub inline fn set3(val: f32) Vec3 {
+    return .{ .data = .{ val, val, val } };
+}
+
+pub inline fn set4(val: f32) Vec4 {
+    return .{ .data = .{ val, val, val, val } };
+}
+
 inline fn getVector(a: anytype) @Vector(3, f32) {
     return if (@TypeOf(a) == Vec3) a.data else @splat(a);
 }
