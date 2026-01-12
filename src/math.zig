@@ -17,6 +17,10 @@ pub const Mat4 = struct {
     },
 };
 
+pub fn makeVec3(src: [3]f32) Vec3 {
+    return .{ .data = .{ src[0], src[1], src[2] } };
+}
+
 pub fn toVec3(src: Vec4) Vec3 {
     return Vec3{ .data = .{ src.data[0], src.data[1], src.data[2] } };
 }

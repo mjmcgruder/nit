@@ -25,14 +25,10 @@ pub const Triangle = struct {
 };
 
 pub const Mesh = struct {
-    vrt: std.ArrayList(m.Vec3) = .empty,
+    vrt: std.ArrayList(m.Vec3) = .empty, // TODO: switch to slices b/c arena
     ind: std.ArrayList(u32) = .empty,
-    bbox: AxisAlignedBoundingBox = .{},
-
-    pub fn deinit(self: *Mesh, allocator: std.mem.Allocator) void {
-        self.vrt.deinit(allocator);
-        self.ind.deinit(allocator);
-    }
+    bvh: BoundingVolumeHierarchy = .{},
+    bbox: AxisAlignedBoundingBox = .{}, // TODO: remove, replace with BVH
 };
 
 pub fn buildMeshBBox(mesh: *Mesh) void {
@@ -52,6 +48,131 @@ pub fn buildMeshBBox(mesh: *Mesh) void {
 
     mesh.bbox.size = m.mul(m.sub(max, min), 0.5);
     mesh.bbox.center = m.mul(m.add(max, min), 0.5);
+}
+
+pub const BoundingVolumeHierarchyNode = struct {
+    center: [3]f32,
+    extent: [3]f32,
+    offset: u32, // primitive offset if leaf, first child offset if interior
+    count: u32, // 0 if interior, positive otherwise
+};
+
+pub const BoundingVolumeHierarchy = struct {
+    nodes: []BoundingVolumeHierarchyNode = &.{},
+    indices: []u32 = &.{},
+};
+
+pub fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchyNode) void {
+    var min: m.Vec3 = m.set3(std.math.floatMax(f32));
+    var max: m.Vec3 = m.set3(-std.math.floatMax(f32));
+
+    for (tri_indices) |tri_index| {
+        const vertices: [3]m.Vec3 = .{
+            mesh.vrt.items[mesh.ind.items[3 * tri_index + 0]],
+            mesh.vrt.items[mesh.ind.items[3 * tri_index + 1]],
+            mesh.vrt.items[mesh.ind.items[3 * tri_index + 2]],
+        };
+        for (vertices) |vertex| {
+            for (0..3) |dim| {
+                if (vertex.data[dim] < min.data[dim]) min.data[dim] = vertex.data[dim];
+                if (vertex.data[dim] > max.data[dim]) max.data[dim] = vertex.data[dim];
+            }
+        }
+    }
+
+    const center: m.Vec3 = m.mul(m.add(max, min), 0.5);
+    const extent: m.Vec3 = m.mul(m.sub(max, min), 0.5);
+
+    node.center = .{ center.data[0], center.data[1], center.data[2] };
+    node.extent = .{ extent.data[0], extent.data[1], extent.data[2] };
+}
+
+pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
+    const ntri: usize = mesh.ind.items.len / 3;
+    std.debug.assert(mesh.ind.items.len % 3 == 0);
+    std.debug.assert(ntri < std.math.maxInt(u32));
+
+    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchyNode, 2 * (2 * ntri - 1));
+    mesh.bvh.indices = try allocator.alloc(u32, ntri);
+    for (0..ntri) |ti| {
+        mesh.bvh.indices[ti] = @intCast(ti);
+    }
+
+    var centroids: []m.Vec3 = try allocator.alloc(m.Vec3, ntri);
+    for (0..ntri) |ti| {
+        const v0: m.Vec3 = mesh.vrt.items[mesh.ind.items[ti * 3 + 0]];
+        const v1: m.Vec3 = mesh.vrt.items[mesh.ind.items[ti * 3 + 1]];
+        const v2: m.Vec3 = mesh.vrt.items[mesh.ind.items[ti * 3 + 2]];
+        centroids[ti] = m.mul(m.add(m.add(v0, v1), v2), 1.0 / 3.0);
+    }
+
+    setBoundingBox(mesh, mesh.bvh.indices, &mesh.bvh.nodes[0]);
+    mesh.bvh.nodes[0].count = @intCast(ntri);
+    mesh.bvh.nodes[0].offset = 0;
+
+    const max_depth: usize = 1 << 5;
+    var node_stack: [max_depth]u32 = undefined;
+    node_stack[0] = 0;
+    var node_stack_head: u32 = 1;
+
+    var next_node: u32 = 1;
+    while (node_stack_head > 0) {
+        const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node_stack[node_stack_head - 1]];
+        node_stack_head -= 1;
+
+        std.debug.print("--- ", .{});
+        for (0..node.count) |i| {
+            std.debug.print("{} ", .{mesh.bvh.indices[node.offset + i]});
+        }
+        std.debug.print("\n", .{});
+
+        // TODO: we need to limit (and track through the stack) depth in case of insanity
+        if (node.count <= 1) continue;
+
+        var split_dim: usize = 0;
+        {
+            var max_extent: f32 = -std.math.floatMax(f32);
+            for (0..3) |dim| {
+                if (node.extent[dim] > max_extent) {
+                    max_extent = node.extent[dim];
+                    split_dim = dim;
+                }
+            }
+        }
+
+        const min: u32 = node.offset;
+        const max: u32 = node.offset + node.count;
+
+        var lo_max: u32 = min;
+        var hi_min: u32 = max;
+        while (lo_max < hi_min) {
+            if (centroids[mesh.bvh.indices[lo_max]].data[split_dim] > node.center[split_dim]) {
+                hi_min -= 1;
+                std.mem.swap(u32, &mesh.bvh.indices[lo_max], &mesh.bvh.indices[hi_min]);
+            } else {
+                lo_max += 1;
+            }
+        }
+
+        if ((lo_max - min > 0) and (max - hi_min > 0)) {
+            node.count = 0; // set interior
+            node.offset = next_node;
+
+            setBoundingBox(mesh, mesh.bvh.indices[min..lo_max], &mesh.bvh.nodes[next_node]);
+            mesh.bvh.nodes[next_node].count = lo_max - min;
+            mesh.bvh.nodes[next_node].offset = min;
+            node_stack[node_stack_head] = next_node;
+            node_stack_head += 1;
+            next_node += 1;
+
+            setBoundingBox(mesh, mesh.bvh.indices[hi_min..max], &mesh.bvh.nodes[next_node]);
+            mesh.bvh.nodes[next_node].count = max - hi_min;
+            mesh.bvh.nodes[next_node].offset = hi_min;
+            node_stack[node_stack_head] = next_node;
+            node_stack_head += 1;
+            next_node += 1;
+        }
+    }
 }
 
 const IntersectResultRayGeom = struct {
@@ -297,4 +418,41 @@ test "intersectRayTriangle --- glance" {
     const result = intersectRayTriangle(ray, tri) orelse unreachable;
     try std.testing.expectApproxEqRel(@sqrt(3.0), result.dist, 1e-5);
     try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, -1.0 } }, result.norm);
+}
+
+test "BVH --- builds" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator: std.mem.Allocator = arena.allocator();
+
+    const vertices = [_]m.Vec3{
+        .{ .data = .{ 0.0, 0.0, 0.0 } },
+        .{ .data = .{ 1.0, 0.0, 0.0 } },
+        .{ .data = .{ 1.0, 1.0, 0.0 } },
+        .{ .data = .{ 0.0, 1.0, 0.0 } },
+        .{ .data = .{ 0.0, 0.0, 1.0 } },
+        .{ .data = .{ 1.0, 0.0, 1.0 } },
+        .{ .data = .{ 1.0, 1.0, 1.0 } },
+        .{ .data = .{ 0.0, 1.0, 1.0 } },
+    };
+    const indices = [_]u32{
+        0, 1, 2,
+        0, 2, 3,
+        4, 6, 5,
+        4, 7, 6,
+        0, 5, 1,
+        0, 4, 5,
+        3, 2, 6,
+        3, 6, 7,
+        0, 3, 7,
+        0, 7, 4,
+        1, 5, 6,
+        1, 6, 2,
+    };
+
+    var mesh: Mesh = .{};
+    try mesh.vrt.appendSlice(allocator, &vertices);
+    try mesh.ind.appendSlice(allocator, &indices);
+
+    try buildBVH(&mesh, allocator);
 }
