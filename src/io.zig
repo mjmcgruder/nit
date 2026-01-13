@@ -321,6 +321,7 @@ pub fn readASCIISTL(
         trim = getNextWord(trim, &word);
         if (std.mem.eql(u8, word, "endsolid")) {
             geom.buildMeshBBox(&result);
+            try geom.buildBVH(&result, allocator);
             return result;
         }
         if (!std.mem.eql(u8, word, "facet")) return STLReadError.FormatError;
