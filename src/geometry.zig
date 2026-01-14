@@ -272,29 +272,108 @@ fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
 //     return null;
 // }
 
+// fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
+//     var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
+//
+//     var traversal_stack: [1 << 8]u32 = undefined; // TODO: set max depth properly
+//     traversal_stack[0] = 0;
+//     var traversal_stack_head: usize = 1;
+//
+//     while (traversal_stack_head > 0) {
+//         const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[traversal_stack[traversal_stack_head - 1]];
+//         traversal_stack_head -= 1;
+//
+//         const center: m.Vec3 = m.makeVec3(node.center);
+//         const extent: m.Vec3 = m.makeVec3(node.extent);
+//
+//         if (intersectRayBox(.{ .d = ray.d, .o = m.sub(ray.o, center) }, .{ .size = extent }) == null) {
+//             continue;
+//         }
+//
+//         if (node.count == 0) {
+//             traversal_stack[traversal_stack_head] = node.offset;
+//             traversal_stack_head += 1;
+//             traversal_stack[traversal_stack_head] = node.offset + 1;
+//             traversal_stack_head += 1;
+//         } else {
+//             for (node.offset..(node.offset + node.count)) |ii| {
+//                 const ti: u32 = mesh.bvh.indices[ii];
+//                 const triangle: Triangle = .{ .vertices = .{
+//                     mesh.vrt.items[mesh.ind.items[3 * ti + 0]],
+//                     mesh.vrt.items[mesh.ind.items[3 * ti + 1]],
+//                     mesh.vrt.items[mesh.ind.items[3 * ti + 2]],
+//                 } };
+//                 if (intersectRayTriangle(ray, triangle)) |intersect| {
+//                     if (intersect.dist < result.dist) {
+//                         result = intersect;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//
+//     return if (result.dist == std.math.floatMax(f32)) null else result;
+// }
+
+const RayMeshStackNode = struct {
+    indx: u32,
+    dist: f32,
+};
+
 fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
     var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
 
-    var traversal_stack: [1 << 8]u32 = undefined; // TODO: set max depth properly
-    traversal_stack[0] = 0;
+    var traversal_stack: [1 << 7]RayMeshStackNode = undefined; // TODO: set max depth properly
+
+    const root_center: m.Vec3 = m.makeVec3(mesh.bvh.nodes[0].center);
+    const root_extent: m.Vec3 = m.makeVec3(mesh.bvh.nodes[0].extent);
+    if (intersectRayBox(
+        .{ .d = ray.d, .o = m.sub(ray.o, root_center) },
+        .{ .size = root_extent },
+    )) |root_intersect| {
+        traversal_stack[0].indx = 0;
+        traversal_stack[0].dist = root_intersect.dist;
+    } else {
+        return null;
+    }
     var traversal_stack_head: usize = 1;
 
     while (traversal_stack_head > 0) {
-        const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[traversal_stack[traversal_stack_head - 1]];
+        const node_stack: RayMeshStackNode = traversal_stack[traversal_stack_head - 1];
         traversal_stack_head -= 1;
+        const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node_stack.indx];
 
-        const center: m.Vec3 = m.makeVec3(node.center);
-        const extent: m.Vec3 = m.makeVec3(node.extent);
-
-        if (intersectRayBox(.{ .d = ray.d, .o = m.sub(ray.o, center) }, .{ .size = extent }) == null) {
-            continue;
-        }
+        if (result.dist <= node_stack.dist) continue;
 
         if (node.count == 0) {
-            traversal_stack[traversal_stack_head] = node.offset;
-            traversal_stack_head += 1;
-            traversal_stack[traversal_stack_head] = node.offset + 1;
-            traversal_stack_head += 1;
+            const child0: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node.offset];
+            const child1: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node.offset + 1];
+
+            const intersect0: IntersectResultRayGeom = intersectRayBox(
+                .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child0.center)) },
+                .{ .size = m.makeVec3(child0.extent) },
+            ) orelse .{ .dist = std.math.floatMax(f32) };
+            const intersect1: IntersectResultRayGeom = intersectRayBox(
+                .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child1.center)) },
+                .{ .size = m.makeVec3(child1.extent) },
+            ) orelse .{ .dist = std.math.floatMax(f32) };
+
+            var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = intersect0.dist };
+            var new_node1: RayMeshStackNode = .{ .indx = node.offset + 1, .dist = intersect1.dist };
+
+            if (new_node0.dist < new_node1.dist) {
+                std.mem.swap(RayMeshStackNode, &new_node0, &new_node1);
+            }
+
+            if (new_node0.dist < std.math.floatMax(f32)) {
+                traversal_stack[traversal_stack_head] = new_node0;
+                traversal_stack_head += 1;
+            }
+
+            if (new_node1.dist < std.math.floatMax(f32)) {
+                traversal_stack[traversal_stack_head] = new_node1;
+                traversal_stack_head += 1;
+            }
         } else {
             for (node.offset..(node.offset + node.count)) |ii| {
                 const ti: u32 = mesh.bvh.indices[ii];
