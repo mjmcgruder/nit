@@ -301,6 +301,8 @@ pub fn readASCIISTL(
     allocator: std.mem.Allocator,
 ) !geom.Mesh {
     var result: geom.Mesh = .{};
+    var vrt: std.ArrayList(m.Vec3) = .empty;
+    var ind: std.ArrayList(u32) = .empty;
 
     const fID: std.fs.File = try std.fs.cwd().openFile(rel_path, .{});
     defer fID.close();
@@ -320,6 +322,8 @@ pub fn readASCIISTL(
         trim = try reader.takeDelimiterInclusive('\n');
         trim = getNextWord(trim, &word);
         if (std.mem.eql(u8, word, "endsolid")) {
+            result.vrt = vrt.items;
+            result.ind = ind.items;
             try geom.buildBVH(&result, allocator);
             return result;
         }
@@ -342,8 +346,8 @@ pub fn readASCIISTL(
                 trim = getNextWord(trim, &word);
                 vertex.data[i] = try std.fmt.parseFloat(f32, word);
             }
-            try result.vrt.append(allocator, vertex);
-            try result.ind.append(allocator, @as(u32, @intCast(result.ind.items.len))); // TODO: fails if too many indices
+            try vrt.append(allocator, vertex);
+            try ind.append(allocator, @as(u32, @intCast(ind.items.len))); // TODO: fails if too many indices
         }
 
         trim = try reader.takeDelimiterInclusive('\n');
@@ -402,21 +406,21 @@ test "readInput --- runs" {
 
     const mesh: geom.Mesh = scene[2].geom.mesh;
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[0]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt.items[mesh.ind.items[1]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[2]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[0]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[1]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt[mesh.ind[2]]);
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[3]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[4]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt.items[mesh.ind.items[5]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[3]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[4]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[5]]);
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[6]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[7]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[8]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[6]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt[mesh.ind[7]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[8]]);
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[9]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt.items[mesh.ind.items[10]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt.items[mesh.ind.items[11]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[9]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[10]]);
+    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt[mesh.ind[11]]);
 
     try std.testing.expectEqual(scene[2].trfm, m.Mat4{ .data = .{
         .{ 1.0, 0.0, 0.0, 0.0 },

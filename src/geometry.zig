@@ -91,8 +91,8 @@ fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
 }
 
 pub const Mesh = struct {
-    vrt: std.ArrayList(m.Vec3) = .empty, // TODO: switch to slices b/c arena
-    ind: std.ArrayList(u32) = .empty,
+    vrt: []m.Vec3 = &.{},
+    ind: []u32 = &.{},
     bvh: BoundingVolumeHierarchy = .{},
 };
 
@@ -113,9 +113,9 @@ fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarch
 
     for (tri_indices) |tri_index| {
         const vertices: [3]m.Vec3 = .{
-            mesh.vrt.items[mesh.ind.items[3 * tri_index + 0]],
-            mesh.vrt.items[mesh.ind.items[3 * tri_index + 1]],
-            mesh.vrt.items[mesh.ind.items[3 * tri_index + 2]],
+            mesh.vrt[mesh.ind[3 * tri_index + 0]],
+            mesh.vrt[mesh.ind[3 * tri_index + 1]],
+            mesh.vrt[mesh.ind[3 * tri_index + 2]],
         };
         for (vertices) |vertex| {
             for (0..3) |dim| {
@@ -133,8 +133,8 @@ fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarch
 }
 
 pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
-    const ntri: usize = mesh.ind.items.len / 3;
-    std.debug.assert(mesh.ind.items.len % 3 == 0);
+    const ntri: usize = mesh.ind.len / 3;
+    std.debug.assert(mesh.ind.len % 3 == 0);
     std.debug.assert(ntri < std.math.maxInt(u32));
 
     mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, 2 * (2 * ntri - 1));
@@ -145,9 +145,9 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
 
     var centroids: []m.Vec3 = try allocator.alloc(m.Vec3, ntri);
     for (0..ntri) |ti| {
-        const v0: m.Vec3 = mesh.vrt.items[mesh.ind.items[ti * 3 + 0]];
-        const v1: m.Vec3 = mesh.vrt.items[mesh.ind.items[ti * 3 + 1]];
-        const v2: m.Vec3 = mesh.vrt.items[mesh.ind.items[ti * 3 + 2]];
+        const v0: m.Vec3 = mesh.vrt[mesh.ind[ti * 3 + 0]];
+        const v1: m.Vec3 = mesh.vrt[mesh.ind[ti * 3 + 1]];
+        const v2: m.Vec3 = mesh.vrt[mesh.ind[ti * 3 + 2]];
         centroids[ti] = m.mul(m.add(m.add(v0, v1), v2), 1.0 / 3.0);
     }
 
@@ -277,9 +277,9 @@ fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
             for (node.offset..(node.offset + node.count)) |ii| {
                 const ti: u32 = mesh.bvh.indices[ii];
                 const triangle: Triangle = .{ .vertices = .{
-                    mesh.vrt.items[mesh.ind.items[3 * ti + 0]],
-                    mesh.vrt.items[mesh.ind.items[3 * ti + 1]],
-                    mesh.vrt.items[mesh.ind.items[3 * ti + 2]],
+                    mesh.vrt[mesh.ind[3 * ti + 0]],
+                    mesh.vrt[mesh.ind[3 * ti + 1]],
+                    mesh.vrt[mesh.ind[3 * ti + 2]],
                 } };
                 if (intersectRayTriangle(ray, triangle)) |intersect| {
                     if (intersect.dist < result.dist) {
@@ -446,7 +446,7 @@ test "BVH --- builds" {
     defer arena.deinit();
     const allocator: std.mem.Allocator = arena.allocator();
 
-    const vertices = [_]m.Vec3{
+    var vertices = [_]m.Vec3{
         .{ .data = .{ 0.0, 0.0, 0.0 } },
         .{ .data = .{ 1.0, 0.0, 0.0 } },
         .{ .data = .{ 1.0, 1.0, 0.0 } },
@@ -456,7 +456,7 @@ test "BVH --- builds" {
         .{ .data = .{ 1.0, 1.0, 1.0 } },
         .{ .data = .{ 0.0, 1.0, 1.0 } },
     };
-    const indices = [_]u32{
+    var indices = [_]u32{
         0, 1, 2,
         0, 2, 3,
         4, 6, 5,
@@ -472,8 +472,8 @@ test "BVH --- builds" {
     };
 
     var mesh: Mesh = .{};
-    try mesh.vrt.appendSlice(allocator, &vertices);
-    try mesh.ind.appendSlice(allocator, &indices);
+    mesh.vrt = &vertices;
+    mesh.ind = &indices;
 
     try buildBVH(&mesh, allocator);
 
