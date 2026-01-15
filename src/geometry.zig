@@ -28,27 +28,7 @@ pub const Mesh = struct {
     vrt: std.ArrayList(m.Vec3) = .empty, // TODO: switch to slices b/c arena
     ind: std.ArrayList(u32) = .empty,
     bvh: BoundingVolumeHierarchy = .{},
-    bbox: AxisAlignedBoundingBox = .{}, // TODO: remove, replace with BVH
 };
-
-pub fn buildMeshBBox(mesh: *Mesh) void {
-    var min: m.Vec3 = m.set3(std.math.floatMax(f32));
-    var max: m.Vec3 = m.set3(-std.math.floatMax(f32));
-
-    for (mesh.vrt.items) |vertex| {
-        for (0..3) |dim| {
-            if (vertex.data[dim] < min.data[dim]) {
-                min.data[dim] = vertex.data[dim];
-            }
-            if (vertex.data[dim] > max.data[dim]) {
-                max.data[dim] = vertex.data[dim];
-            }
-        }
-    }
-
-    mesh.bbox.size = m.mul(m.sub(max, min), 0.5);
-    mesh.bbox.center = m.mul(m.add(max, min), 0.5);
-}
 
 pub const BoundingVolumeHierarchyNode = struct {
     center: [3]f32,
@@ -119,12 +99,6 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
     while (node_stack_head > 0) {
         const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node_stack[node_stack_head - 1]];
         node_stack_head -= 1;
-
-        // std.debug.print("--- ", .{});
-        // for (0..node.count) |i| {
-        //     std.debug.print("{} ", .{mesh.bvh.indices[node.offset + i]});
-        // }
-        // std.debug.print("\n", .{});
 
         // TODO: we need to limit (and track through the stack) depth in case of insanity
         if (node.count <= 1) continue;
@@ -246,82 +220,13 @@ fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
     return .{ .dist = t, .norm = if (m.dot(n, ray.d) < 0.0) nn else m.mul(-1.0, nn) };
 }
 
-// fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
-//     const box: Box = .{ .size = mesh.bbox.size };
-//
-//     if (intersectRayBox(.{ .d = ray.d, .o = m.sub(ray.o, mesh.bbox.center) }, box)) |_| {
-//         var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
-//         std.debug.assert(mesh.ind.items.len % 3 == 0);
-//         const ntri: usize = mesh.ind.items.len / 3;
-//         var it: usize = 0;
-//         while (it < ntri) : (it += 1) {
-//             const triangle: Triangle = .{ .vertices = .{
-//                 mesh.vrt.items[mesh.ind.items[3 * it + 0]],
-//                 mesh.vrt.items[mesh.ind.items[3 * it + 1]],
-//                 mesh.vrt.items[mesh.ind.items[3 * it + 2]],
-//             } };
-//             if (intersectRayTriangle(ray, triangle)) |intersect| {
-//                 if (intersect.dist < result.dist) {
-//                     result = intersect;
-//                 }
-//             }
-//         }
-//         return if (result.dist == std.math.floatMax(f32)) null else result;
-//     }
-//
-//     return null;
-// }
-
-// fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
-//     var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
-//
-//     var traversal_stack: [1 << 8]u32 = undefined; // TODO: set max depth properly
-//     traversal_stack[0] = 0;
-//     var traversal_stack_head: usize = 1;
-//
-//     while (traversal_stack_head > 0) {
-//         const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[traversal_stack[traversal_stack_head - 1]];
-//         traversal_stack_head -= 1;
-//
-//         const center: m.Vec3 = m.makeVec3(node.center);
-//         const extent: m.Vec3 = m.makeVec3(node.extent);
-//
-//         if (intersectRayBox(.{ .d = ray.d, .o = m.sub(ray.o, center) }, .{ .size = extent }) == null) {
-//             continue;
-//         }
-//
-//         if (node.count == 0) {
-//             traversal_stack[traversal_stack_head] = node.offset;
-//             traversal_stack_head += 1;
-//             traversal_stack[traversal_stack_head] = node.offset + 1;
-//             traversal_stack_head += 1;
-//         } else {
-//             for (node.offset..(node.offset + node.count)) |ii| {
-//                 const ti: u32 = mesh.bvh.indices[ii];
-//                 const triangle: Triangle = .{ .vertices = .{
-//                     mesh.vrt.items[mesh.ind.items[3 * ti + 0]],
-//                     mesh.vrt.items[mesh.ind.items[3 * ti + 1]],
-//                     mesh.vrt.items[mesh.ind.items[3 * ti + 2]],
-//                 } };
-//                 if (intersectRayTriangle(ray, triangle)) |intersect| {
-//                     if (intersect.dist < result.dist) {
-//                         result = intersect;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     return if (result.dist == std.math.floatMax(f32)) null else result;
-// }
-
-const RayMeshStackNode = struct {
-    indx: u32,
-    dist: f32,
-};
-
 fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
     var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
+
+    const RayMeshStackNode = struct {
+        indx: u32,
+        dist: f32,
+    };
 
     var traversal_stack: [1 << 7]RayMeshStackNode = undefined; // TODO: set max depth properly
 

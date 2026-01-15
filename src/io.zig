@@ -320,7 +320,6 @@ pub fn readASCIISTL(
         trim = try reader.takeDelimiterInclusive('\n');
         trim = getNextWord(trim, &word);
         if (std.mem.eql(u8, word, "endsolid")) {
-            geom.buildMeshBBox(&result);
             try geom.buildBVH(&result, allocator);
             return result;
         }
