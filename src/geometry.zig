@@ -7,22 +7,88 @@ pub const Ray = struct {
     d: m.Vec3,
 };
 
+const IntersectResultRayGeom = struct {
+    dist: f32 = 0.0,
+    norm: m.Vec3 = .{},
+};
+
 pub const Sphere = struct {
     r: f32 = 1.0,
 };
+
+fn intersectRaySphere(ray: Ray, sphere: Sphere) ?IntersectResultRayGeom {
+    const roh: f32 = m.dot(ray.o, ray.d); // ray origin to half-chord dist
+    const woc: m.Vec3 = m.sub(ray.o, m.mul(roh, ray.d)); // world origin to chord vec
+    const hsq: f32 = sphere.r * sphere.r - m.dot(woc, woc);
+    // closest ray point is outside sphere
+    if (hsq < 0.0) return null;
+    const seh: f32 = @sqrt(hsq); // sphere edge to half-chord distance
+    const tn: f32 = -roh - seh; // near
+    const tf: f32 = -roh + seh; // far
+    // sphere is behind ray origin
+    if (tf < 0.0) return null;
+    // ray origin is inside sphere
+    if (tn < 0.0) {
+        return IntersectResultRayGeom{
+            .dist = tf,
+            .norm = m.mul(m.mul(-1.0, m.add(ray.o, m.mul(ray.d, tf))), m.sdiv(1.0, sphere.r)),
+        };
+    }
+    // sphere is ahead of ray origin
+    return IntersectResultRayGeom{
+        .dist = tn, // note normalization below is simple since the vector has magnitude radius
+        .norm = m.mul(m.add(ray.o, m.mul(ray.d, tn)), m.sdiv(1.0, sphere.r)),
+    };
+}
 
 pub const Box = struct {
     size: m.Vec3 = .{ .data = .{ 1.0, 1.0, 1.0 } },
 };
 
-pub const AxisAlignedBoundingBox = struct {
-    center: m.Vec3 = .{},
-    size: m.Vec3 = .{}, // note this is max dist from center in each direction (half of net length)
-};
+fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
+    const ird: m.Vec3 = m.div(1.0, ray.d); // invserse ray direction
+    const dt0: m.Vec3 = m.mul(ird, ray.o); // parametric distance to axis-orthogonal plane at 0
+    const bdc: m.Vec3 = m.mul(m.abs(ird), box.size); // box distance correction
+    const atn: m.Vec3 = m.sub(m.mul(-1.0, dt0), bdc);
+    const atf: m.Vec3 = m.add(m.mul(-1.0, dt0), bdc);
+    const tn: f32 = @max(atn.data[0], atn.data[1], atn.data[2]);
+    const tf: f32 = @min(atf.data[0], atf.data[1], atf.data[2]);
+    // miss or box behind ray origin
+    if (tn > tf or tf < 0.0) return null;
+    // hit with box ahead of ray origin
+    if (tn > 0.0) {
+        return .{
+            .dist = tn,
+            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))), // TODO: normalization occasionally slightly incorrect due to FP
+        };
+    }
+    // hit with box ahead of ray origin
+    else {
+        return .{
+            .dist = tf,
+            .norm = m.mul(m.step(atf, tf), m.mul(-1.0, m.sign(ray.d))),
+        };
+    }
+}
 
 pub const Triangle = struct {
     vertices: [3]m.Vec3,
 };
+
+fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
+    const v0v1: m.Vec3 = m.sub(tri.vertices[1], tri.vertices[0]);
+    const v0v2: m.Vec3 = m.sub(tri.vertices[2], tri.vertices[0]);
+    const v0ro: m.Vec3 = m.sub(ray.o, tri.vertices[0]);
+    const n: m.Vec3 = m.cross(v0v1, v0v2);
+    const q: m.Vec3 = m.cross(v0ro, ray.d);
+    const d: f32 = 1.0 / m.dot(ray.d, n);
+    const u: f32 = d * m.dot(m.mul(-1.0, q), v0v2);
+    const v: f32 = d * m.dot(q, v0v1);
+    const t: f32 = d * m.dot(m.mul(-1.0, n), v0ro);
+    if (u < 0.0 or v < 0.0 or (u + v) > 1.0 or t < 0.0) return null;
+    const nn: m.Vec3 = m.normalize(n);
+    return .{ .dist = t, .norm = if (m.dot(n, ray.d) < 0.0) nn else m.mul(-1.0, nn) };
+}
 
 pub const Mesh = struct {
     vrt: std.ArrayList(m.Vec3) = .empty, // TODO: switch to slices b/c arena
@@ -30,19 +96,18 @@ pub const Mesh = struct {
     bvh: BoundingVolumeHierarchy = .{},
 };
 
-pub const BoundingVolumeHierarchyNode = struct {
-    center: [3]f32,
-    extent: [3]f32,
-    offset: u32, // primitive offset if leaf, first child offset if interior
-    count: u32, // 0 if interior, positive otherwise
-};
-
 pub const BoundingVolumeHierarchy = struct {
-    nodes: []BoundingVolumeHierarchyNode = &.{},
+    pub const Node = struct {
+        center: [3]f32,
+        extent: [3]f32,
+        offset: u32, // primitive offset if leaf, first child offset if interior
+        count: u32, // 0 if interior, positive otherwise
+    };
+    nodes: []Node = &.{},
     indices: []u32 = &.{},
 };
 
-pub fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchyNode) void {
+fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.Node) void {
     var min: m.Vec3 = m.set3(std.math.floatMax(f32));
     var max: m.Vec3 = m.set3(-std.math.floatMax(f32));
 
@@ -72,7 +137,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
     std.debug.assert(mesh.ind.items.len % 3 == 0);
     std.debug.assert(ntri < std.math.maxInt(u32));
 
-    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchyNode, 2 * (2 * ntri - 1));
+    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, 2 * (2 * ntri - 1));
     mesh.bvh.indices = try allocator.alloc(u32, ntri);
     for (0..ntri) |ti| {
         mesh.bvh.indices[ti] = @intCast(ti);
@@ -97,7 +162,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
 
     var next_node: u32 = 1;
     while (node_stack_head > 0) {
-        const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node_stack[node_stack_head - 1]];
+        const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node_stack[node_stack_head - 1]];
         node_stack_head -= 1;
 
         // TODO: we need to limit (and track through the stack) depth in case of insanity
@@ -149,77 +214,6 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
     }
 }
 
-const IntersectResultRayGeom = struct {
-    dist: f32 = 0.0,
-    norm: m.Vec3 = .{},
-};
-
-fn intersectRaySphere(ray: Ray, sphere: Sphere) ?IntersectResultRayGeom {
-    const roh: f32 = m.dot(ray.o, ray.d); // ray origin to half-chord dist
-    const woc: m.Vec3 = m.sub(ray.o, m.mul(roh, ray.d)); // world origin to chord vec
-    const hsq: f32 = sphere.r * sphere.r - m.dot(woc, woc);
-    // closest ray point is outside sphere
-    if (hsq < 0.0) return null;
-    const seh: f32 = @sqrt(hsq); // sphere edge to half-chord distance
-    const tn: f32 = -roh - seh; // near
-    const tf: f32 = -roh + seh; // far
-    // sphere is behind ray origin
-    if (tf < 0.0) return null;
-    // ray origin is inside sphere
-    if (tn < 0.0) {
-        return IntersectResultRayGeom{
-            .dist = tf,
-            .norm = m.mul(m.mul(-1.0, m.add(ray.o, m.mul(ray.d, tf))), m.sdiv(1.0, sphere.r)),
-        };
-    }
-    // sphere is ahead of ray origin
-    return IntersectResultRayGeom{
-        .dist = tn, // note normalization below is simple since the vector has magnitude radius
-        .norm = m.mul(m.add(ray.o, m.mul(ray.d, tn)), m.sdiv(1.0, sphere.r)),
-    };
-}
-
-fn intersectRayBox(ray: Ray, box: Box) ?IntersectResultRayGeom {
-    const ird: m.Vec3 = m.div(1.0, ray.d); // invserse ray direction
-    const dt0: m.Vec3 = m.mul(ird, ray.o); // parametric distance to axis-orthogonal plane at 0
-    const bdc: m.Vec3 = m.mul(m.abs(ird), box.size); // box distance correction
-    const atn: m.Vec3 = m.sub(m.mul(-1.0, dt0), bdc);
-    const atf: m.Vec3 = m.add(m.mul(-1.0, dt0), bdc);
-    const tn: f32 = @max(atn.data[0], atn.data[1], atn.data[2]);
-    const tf: f32 = @min(atf.data[0], atf.data[1], atf.data[2]);
-    // miss or box behind ray origin
-    if (tn > tf or tf < 0.0) return null;
-    // hit with box ahead of ray origin
-    if (tn > 0.0) {
-        return .{
-            .dist = tn,
-            .norm = m.mul(m.step(tn, atn), m.mul(-1.0, m.sign(ray.d))), // TODO: normalization occasionally slightly incorrect due to FP
-        };
-    }
-    // hit with box ahead of ray origin
-    else {
-        return .{
-            .dist = tf,
-            .norm = m.mul(m.step(atf, tf), m.mul(-1.0, m.sign(ray.d))),
-        };
-    }
-}
-
-fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResultRayGeom {
-    const v0v1: m.Vec3 = m.sub(tri.vertices[1], tri.vertices[0]);
-    const v0v2: m.Vec3 = m.sub(tri.vertices[2], tri.vertices[0]);
-    const v0ro: m.Vec3 = m.sub(ray.o, tri.vertices[0]);
-    const n: m.Vec3 = m.cross(v0v1, v0v2);
-    const q: m.Vec3 = m.cross(v0ro, ray.d);
-    const d: f32 = 1.0 / m.dot(ray.d, n);
-    const u: f32 = d * m.dot(m.mul(-1.0, q), v0v2);
-    const v: f32 = d * m.dot(q, v0v1);
-    const t: f32 = d * m.dot(m.mul(-1.0, n), v0ro);
-    if (u < 0.0 or v < 0.0 or (u + v) > 1.0 or t < 0.0) return null;
-    const nn: m.Vec3 = m.normalize(n);
-    return .{ .dist = t, .norm = if (m.dot(n, ray.d) < 0.0) nn else m.mul(-1.0, nn) };
-}
-
 fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
     var result: IntersectResultRayGeom = .{ .dist = std.math.floatMax(f32), .norm = undefined };
 
@@ -246,13 +240,13 @@ fn intersectRayMesh(ray: Ray, mesh: Mesh) ?IntersectResultRayGeom {
     while (traversal_stack_head > 0) {
         const node_stack: RayMeshStackNode = traversal_stack[traversal_stack_head - 1];
         traversal_stack_head -= 1;
-        const node: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node_stack.indx];
+        const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node_stack.indx];
 
         if (result.dist <= node_stack.dist) continue;
 
         if (node.count == 0) {
-            const child0: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node.offset];
-            const child1: *BoundingVolumeHierarchyNode = &mesh.bvh.nodes[node.offset + 1];
+            const child0: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset];
+            const child1: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset + 1];
 
             const intersect0: IntersectResultRayGeom = intersectRayBox(
                 .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child0.center)) },
