@@ -188,8 +188,14 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
         const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.index];
         node_stack_head -= 1;
 
-        // TODO: we need to limit (and track through the stack) depth in case of insanity
-        if (node.count <= 1 or (stack_node.depth + 1 >= max_depth)) continue;
+        if (node.count <= 1 or (stack_node.depth + 1 >= max_depth)) {
+            stats.nodes_leaf += 1;
+            stats.depth_average += @as(f32, @floatFromInt(stack_node.depth));
+            stats.depth_max = @max(stats.depth_max, stack_node.depth);
+            stats.tris_max = @max(stats.tris_max, node.count);
+            stats.tris_average += @as(f32, @floatFromInt(node.count));
+            continue;
+        }
 
         var split_dim: usize = 0;
         {
@@ -216,6 +222,8 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
             }
         }
 
+        // NOTE: We must always ensure each newly created leaf has at least one triangle, otherwise
+        // the node structure doesn't work since we assume all interior nodes have count 0.
         if ((lo_max - min > 0) and (max - hi_min > 0)) {
             node.count = 0; // set interior
             node.offset = next_node;
