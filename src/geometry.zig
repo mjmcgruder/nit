@@ -138,11 +138,13 @@ fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarch
 }
 
 pub const BVHStats = struct {
+    depth_min: u32 = std.math.maxInt(u32),
     depth_max: u32 = 0,
     depth_average: f32 = 0.0,
     nodes_total: u32 = 0,
     nodes_interior: u32 = 0,
     nodes_leaf: u32 = 0,
+    tris_min: u32 = std.math.maxInt(u32),
     tris_max: u32 = 0,
     tris_average: f32 = 0.0,
 };
@@ -188,14 +190,21 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
         const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.index];
         node_stack_head -= 1;
 
-        if (node.count <= 1 or (stack_node.depth + 1 >= max_depth)) {
-            stats.nodes_leaf += 1;
-            stats.depth_average += @as(f32, @floatFromInt(stack_node.depth));
-            stats.depth_max = @max(stats.depth_max, stack_node.depth);
-            stats.tris_max = @max(stats.tris_max, node.count);
-            stats.tris_average += @as(f32, @floatFromInt(node.count));
-            continue;
+        defer {
+            if (node.count == 0) {
+                stats.nodes_interior += 1;
+            } else {
+                stats.nodes_leaf += 1;
+                stats.depth_average += @as(f32, @floatFromInt(stack_node.depth));
+                stats.depth_min = @min(stats.depth_min, stack_node.depth);
+                stats.depth_max = @max(stats.depth_max, stack_node.depth);
+                stats.tris_min = @min(stats.tris_min, node.count);
+                stats.tris_max = @max(stats.tris_max, node.count);
+                stats.tris_average += @as(f32, @floatFromInt(node.count));
+            }
         }
+
+        if (node.count <= 1 or (stack_node.depth + 1 >= max_depth)) continue;
 
         var split_dim: usize = 0;
         {
@@ -228,8 +237,6 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
             node.count = 0; // set interior
             node.offset = next_node;
 
-            stats.nodes_interior += 1;
-
             setBoundingBox(mesh, mesh.bvh.indices[min..lo_max], &mesh.bvh.nodes[next_node]);
             mesh.bvh.nodes[next_node].count = lo_max - min;
             mesh.bvh.nodes[next_node].offset = min;
@@ -243,12 +250,6 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
             node_stack[node_stack_head] = .{ .index = next_node, .depth = stack_node.depth + 1 };
             node_stack_head += 1;
             next_node += 1;
-        } else {
-            stats.nodes_leaf += 1;
-            stats.depth_average += @as(f32, @floatFromInt(stack_node.depth));
-            stats.depth_max = @max(stats.depth_max, stack_node.depth);
-            stats.tris_max = @max(stats.tris_max, node.count);
-            stats.tris_average += @as(f32, @floatFromInt(node.count));
         }
     }
 
@@ -257,10 +258,12 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
     stats.tris_average /= @as(f32, @floatFromInt(stats.nodes_leaf));
 
     try stdout.print("average depth:     {}\n", .{stats.depth_average});
+    try stdout.print("min depth:         {}\n", .{stats.depth_min});
     try stdout.print("max depth:         {}\n", .{stats.depth_max});
     try stdout.print("total nodes:       {}\n", .{stats.nodes_total});
     try stdout.print("interior nodes:    {}\n", .{stats.nodes_interior});
     try stdout.print("leaf nodes:        {}\n", .{stats.nodes_leaf});
+    try stdout.print("min triangles:     {}\n", .{stats.tris_min});
     try stdout.print("max triangles:     {}\n", .{stats.tris_max});
     try stdout.print("average triangles: {}\n", .{stats.tris_average});
 }
