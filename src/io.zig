@@ -2,6 +2,7 @@ const std = @import("std");
 
 const m = @import("math.zig");
 const geom = @import("geometry.zig");
+const geom_mesh = @import("geometry_mesh.zig");
 
 var stdout_writer = std.fs.File.stdout().writer(&.{});
 var stderr_writer = std.fs.File.stderr().writer(&.{});
@@ -299,8 +300,8 @@ const STLReadError = error{ // TODO: possibly generalize this
 pub fn readASCIISTL(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
-) !geom.Mesh {
-    var result: geom.Mesh = .{};
+) !geom_mesh.Mesh {
+    var result: geom_mesh.Mesh = .{};
     var vrt: std.ArrayList(m.Vec3) = .empty;
     var ind: std.ArrayList(u32) = .empty;
 
@@ -324,7 +325,7 @@ pub fn readASCIISTL(
         if (std.mem.eql(u8, word, "endsolid")) {
             result.vrt = vrt.items;
             result.ind = ind.items;
-            try geom.buildBVH(&result, allocator);
+            try geom_mesh.buildBVH(&result, allocator);
             return result;
         }
         if (!std.mem.eql(u8, word, "facet")) return STLReadError.FormatError;
@@ -404,7 +405,7 @@ test "readInput --- runs" {
     try std.testing.expectEqual(scene[1].emit, m.Vec3{ .data = .{ 12.0, 12.0, 12.0 } });
     try std.testing.expectEqual(scene[1].mtrl, geom.Material.diffuse);
 
-    const mesh: geom.Mesh = scene[2].geom.mesh;
+    const mesh: geom_mesh.Mesh = scene[2].geom.mesh;
 
     try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[0]]);
     try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[1]]);
