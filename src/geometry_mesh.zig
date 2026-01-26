@@ -37,8 +37,8 @@ fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarch
         };
         for (vertices) |vertex| {
             for (0..3) |dim| {
-                if (vertex.data[dim] < min.data[dim]) min.data[dim] = vertex.data[dim];
-                if (vertex.data[dim] > max.data[dim]) max.data[dim] = vertex.data[dim];
+                if (vertex[dim] < min[dim]) min[dim] = vertex[dim];
+                if (vertex[dim] > max[dim]) max[dim] = vertex[dim];
             }
         }
     }
@@ -46,8 +46,8 @@ fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarch
     const center: m.Vec3 = m.mul(m.add(max, min), 0.5);
     const extent: m.Vec3 = m.mul(m.sub(max, min), 0.5);
 
-    node.center = .{ center.data[0], center.data[1], center.data[2] };
-    node.extent = .{ extent.data[0], extent.data[1], extent.data[2] };
+    node.center = .{ center[0], center[1], center[2] };
+    node.extent = .{ extent[0], extent[1], extent[2] };
 }
 
 pub const BVHStats = struct {
@@ -136,7 +136,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
         var lo_max: u32 = min;
         var hi_min: u32 = max;
         while (lo_max < hi_min) {
-            if (centroids[mesh.bvh.indices[lo_max]].data[split_dim] > node.center[split_dim]) {
+            if (centroids[mesh.bvh.indices[lo_max]][split_dim] > node.center[split_dim]) {
                 hi_min -= 1;
                 std.mem.swap(u32, &mesh.bvh.indices[lo_max], &mesh.bvh.indices[hi_min]);
             } else {
@@ -266,14 +266,14 @@ test "BVH --- builds" {
     const allocator: std.mem.Allocator = arena.allocator();
 
     var vertices = [_]m.Vec3{
-        .{ .data = .{ 0.0, 0.0, 0.0 } },
-        .{ .data = .{ 1.0, 0.0, 0.0 } },
-        .{ .data = .{ 1.0, 1.0, 0.0 } },
-        .{ .data = .{ 0.0, 1.0, 0.0 } },
-        .{ .data = .{ 0.0, 0.0, 1.0 } },
-        .{ .data = .{ 1.0, 0.0, 1.0 } },
-        .{ .data = .{ 1.0, 1.0, 1.0 } },
-        .{ .data = .{ 0.0, 1.0, 1.0 } },
+        .{ 0.0, 0.0, 0.0 },
+        .{ 1.0, 0.0, 0.0 },
+        .{ 1.0, 1.0, 0.0 },
+        .{ 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 1.0 },
+        .{ 1.0, 0.0, 1.0 },
+        .{ 1.0, 1.0, 1.0 },
+        .{ 0.0, 1.0, 1.0 },
     };
     var indices = [_]u32{
         0, 1, 2,
@@ -296,7 +296,7 @@ test "BVH --- builds" {
 
     try buildBVH(&mesh, allocator);
 
-    const ray: prim.Ray = .{ .o = .{ .data = .{ -2.0, 0.2, 0.2 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const ray: prim.Ray = .{ .o = .{ -2.0, 0.2, 0.2 }, .d = .{ 1.0, 0.0, 0.0 } };
     if (intersectRayMesh(ray, mesh)) |result| {
         std.debug.print("{}\n", .{result.dist});
         std.debug.print("{}\n", .{result.norm});

@@ -2,6 +2,10 @@ const std = @import("std");
 
 const m = @import("math.zig");
 
+// TODO: source attribution
+// TODO: only situationally compute the normal for box intersection
+// TODO: handle fp error (conservatively?)
+
 pub const Ray = struct {
     o: m.Vec3,
     d: m.Vec3,
@@ -12,7 +16,7 @@ pub const Sphere = struct {
 };
 
 pub const Box = struct {
-    size: m.Vec3 = .{ .data = @splat(1.0) },
+    size: m.Vec3 = @splat(1.0),
 };
 
 pub const Triangle = struct {
@@ -21,7 +25,7 @@ pub const Triangle = struct {
 
 pub const IntersectResult = struct {
     dist: f32 = 0.0,
-    norm: m.Vec3 = .{},
+    norm: m.Vec3 = .{ 0.0, 0.0, 0.0 },
 };
 
 pub fn intersectRaySphere(ray: Ray, sphere: Sphere) ?IntersectResult {
@@ -55,8 +59,8 @@ pub fn intersectRayBox(ray: Ray, box: Box) ?IntersectResult {
     const bdc: m.Vec3 = m.mul(m.abs(ird), box.size); // box distance correction
     const atn: m.Vec3 = m.sub(m.mul(-1.0, dt0), bdc);
     const atf: m.Vec3 = m.add(m.mul(-1.0, dt0), bdc);
-    const tn: f32 = @max(atn.data[0], atn.data[1], atn.data[2]);
-    const tf: f32 = @min(atf.data[0], atf.data[1], atf.data[2]);
+    const tn: f32 = @max(atn[0], atn[1], atn[2]);
+    const tf: f32 = @min(atf[0], atf[1], atf[2]);
     // miss or box behind ray origin
     if (tn > tf or tf < 0.0) return null;
     // hit with box ahead of ray origin
@@ -93,33 +97,33 @@ pub fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResult {
 // TESTS -----
 
 test "intersectRaySphere --- sphere ahead" {
-    const ray: Ray = .{ .o = .{ .data = .{ -2.0, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const ray: Ray = .{ .o = .{ -2.0, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
     const sphere: Sphere = .{ .r = 1.0 };
     if (intersectRaySphere(ray, sphere)) |result| {
         try std.testing.expectApproxEqAbs(1.0, result.dist, 4 * m.eps);
-        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[2], 4 * m.eps);
     } else {
         try std.testing.expect(false);
     }
 }
 
 test "intersectRaySphere --- ray origin inside sphere" {
-    const ray: Ray = .{ .o = .{ .data = .{ -0.5, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const ray: Ray = .{ .o = .{ -0.5, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
     const sphere: Sphere = .{ .r = 1.0 };
     if (intersectRaySphere(ray, sphere)) |result| {
         try std.testing.expectApproxEqAbs(1.5, result.dist, 4 * m.eps);
-        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[2], 4 * m.eps);
     } else {
         try std.testing.expect(false);
     }
 }
 
 test "intersectRaySphere --- sphere behind ray origin" {
-    const ray: Ray = .{ .o = .{ .data = .{ 1.5, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
+    const ray: Ray = .{ .o = .{ 1.5, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
     const sphere: Sphere = .{ .r = 1.0 };
     if (intersectRaySphere(ray, sphere)) |_| {
         try std.testing.expect(false);
@@ -129,34 +133,34 @@ test "intersectRaySphere --- sphere behind ray origin" {
 }
 
 test "intersectRayBox --- box ahead" {
-    const ray: Ray = .{ .o = .{ .data = .{ -2.0, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
-    const box: Box = .{ .size = .{ .data = .{ 0.5, 0.5, 0.5 } } };
+    const ray: Ray = .{ .o = .{ -2.0, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
+    const box: Box = .{ .size = .{ 0.5, 0.5, 0.5 } };
     if (intersectRayBox(ray, box)) |result| {
         try std.testing.expectApproxEqAbs(1.5, result.dist, 4 * m.eps);
-        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[2], 4 * m.eps);
     } else {
         try std.testing.expect(false);
     }
 }
 
 test "intersectRayBox --- ray origin inside box" {
-    const ray: Ray = .{ .o = .{ .data = .{ 0.25, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
-    const box: Box = .{ .size = .{ .data = .{ 0.5, 0.5, 0.5 } } };
+    const ray: Ray = .{ .o = .{ 0.25, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
+    const box: Box = .{ .size = .{ 0.5, 0.5, 0.5 } };
     if (intersectRayBox(ray, box)) |result| {
         try std.testing.expectApproxEqAbs(0.25, result.dist, 4 * m.eps);
-        try std.testing.expectApproxEqAbs(-1.0, result.norm.data[0], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[1], 4 * m.eps);
-        try std.testing.expectApproxEqAbs(0.0, result.norm.data[2], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(-1.0, result.norm[0], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[1], 4 * m.eps);
+        try std.testing.expectApproxEqAbs(0.0, result.norm[2], 4 * m.eps);
     } else {
         try std.testing.expect(false);
     }
 }
 
 test "intersectRayBox --- box behind ray origin" {
-    const ray: Ray = .{ .o = .{ .data = .{ 0.75, 0.0, 0.0 } }, .d = .{ .data = .{ 1.0, 0.0, 0.0 } } };
-    const box: Box = .{ .size = .{ .data = .{ 0.5, 0.5, 0.5 } } };
+    const ray: Ray = .{ .o = .{ 0.75, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
+    const box: Box = .{ .size = .{ 0.5, 0.5, 0.5 } };
     if (intersectRayBox(ray, box)) |_| {
         try std.testing.expect(false);
     } else {
@@ -166,15 +170,15 @@ test "intersectRayBox --- box behind ray origin" {
 
 test "intersectRayTriangle --- glance" {
     const tri: Triangle = .{ .vertices = .{
-        .{ .data = .{ 0.0, 0.0, 0.0 } },
-        .{ .data = .{ 1.0, 0.0, 0.0 } },
-        .{ .data = .{ 0.0, 1.0, 0.0 } },
+        .{ 0.0, 0.0, 0.0 },
+        .{ 1.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0 },
     } };
     const ray: Ray = .{
-        .o = .{ .data = .{ 1.0 + 0.1, 1.0 + 0.2, -1.0 } },
-        .d = m.normalize(.{ .data = .{ -1.0, -1.0, 1.0 } }),
+        .o = .{ 1.0 + 0.1, 1.0 + 0.2, -1.0 },
+        .d = m.normalize(@as(m.Vec3, .{ -1.0, -1.0, 1.0 })),
     };
     const result = intersectRayTriangle(ray, tri) orelse unreachable;
     try std.testing.expectApproxEqRel(@sqrt(3.0), result.dist, 1e-5);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, -1.0 } }, result.norm);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, -1.0 }), result.norm);
 }

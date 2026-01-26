@@ -1,8 +1,6 @@
 const std = @import("std");
 
-pub const Vec3 = struct {
-    data: @Vector(3, f32) = @Vector(3, f32){ 0.0, 0.0, 0.0 },
-};
+pub const Vec3 = @Vector(3, f32);
 
 pub const Vec4 = struct {
     data: @Vector(4, f32) = @Vector(4, f32){ 0.0, 0.0, 0.0, 0.0 },
@@ -18,19 +16,19 @@ pub const Mat4 = struct {
 };
 
 pub fn makeVec3(src: [3]f32) Vec3 {
-    return .{ .data = .{ src[0], src[1], src[2] } };
+    return .{ src[0], src[1], src[2] };
 }
 
 pub fn toVec3(src: Vec4) Vec3 {
-    return Vec3{ .data = .{ src.data[0], src.data[1], src.data[2] } };
+    return .{ src.data[0], src.data[1], src.data[2] };
 }
 
 pub fn toVec4(src: Vec3) Vec4 {
-    return Vec4{ .data = .{ src.data[0], src.data[1], src.data[2], 0.0 } };
+    return Vec4{ .data = .{ src[0], src[1], src[2], 0.0 } };
 }
 
 pub fn toHomogeneousPos(src: Vec3) Vec4 {
-    return Vec4{ .data = .{ src.data[0], src.data[1], src.data[2], 1.0 } };
+    return Vec4{ .data = .{ src[0], src[1], src[2], 1.0 } };
 }
 
 pub fn toHomogeneousDir(src: Vec3) Vec4 {
@@ -96,9 +94,9 @@ pub fn invertTransform(mat: Mat4) Mat4 {
 
 pub fn translate(vec: Vec3) Mat4 { // TODO: this naming scheme is... bad?
     return .{ .data = .{
-        .{ 1.0, 0.0, 0.0, vec.data[0] },
-        .{ 0.0, 1.0, 0.0, vec.data[1] },
-        .{ 0.0, 0.0, 1.0, vec.data[2] },
+        .{ 1.0, 0.0, 0.0, vec[0] },
+        .{ 0.0, 1.0, 0.0, vec[1] },
+        .{ 0.0, 0.0, 1.0, vec[2] },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } };
 }
@@ -116,9 +114,9 @@ pub fn rotateAboutAxis(axis: Vec3, angled: f32) Mat4 {
     const axis_normalized: Vec3 = normalize(axis);
     const c: f32 = @cos(angled * (std.math.pi / 180.0));
     const s: f32 = @sin(angled * (std.math.pi / 180.0));
-    const x: f32 = axis_normalized.data[0];
-    const y: f32 = axis_normalized.data[1];
-    const z: f32 = axis_normalized.data[2];
+    const x: f32 = axis_normalized[0];
+    const y: f32 = axis_normalized[1];
+    const z: f32 = axis_normalized[2];
     const omc: f32 = 1.0 - c;
     return .{ .data = .{
         .{ omc * x * x + c, omc * x * y - s * z, omc * x * z + s * y, 0.0 },
@@ -128,14 +126,14 @@ pub fn rotateAboutAxis(axis: Vec3, angled: f32) Mat4 {
     } };
 }
 
-pub const unit_x: Vec3 = Vec3{ .data = .{ 1.0, 0.0, 0.0 } };
-pub const unit_y: Vec3 = Vec3{ .data = .{ 0.0, 1.0, 0.0 } };
-pub const unit_z: Vec3 = Vec3{ .data = .{ 0.0, 0.0, 1.0 } };
+pub const unit_x: Vec3 = .{ 1.0, 0.0, 0.0 };
+pub const unit_y: Vec3 = .{ 0.0, 1.0, 0.0 };
+pub const unit_z: Vec3 = .{ 0.0, 0.0, 1.0 };
 
 pub const eps: comptime_float = std.math.floatEps(f32);
 
 pub inline fn set3(val: f32) Vec3 {
-    return .{ .data = .{ val, val, val } };
+    return .{ val, val, val };
 }
 
 pub inline fn set4(val: f32) Vec4 {
@@ -143,25 +141,25 @@ pub inline fn set4(val: f32) Vec4 {
 }
 
 inline fn getVector(a: anytype) @Vector(3, f32) {
-    return if (@TypeOf(a) == Vec3) a.data else @splat(a);
+    return if (@TypeOf(a) == Vec3) a else @splat(a);
 }
 
 pub inline fn add(a: anytype, b: anytype) Vec3 {
     const av: @Vector(3, f32) = getVector(a);
     const bv: @Vector(3, f32) = getVector(b);
-    return Vec3{ .data = av + bv };
+    return av + bv;
 }
 
 pub inline fn sub(a: anytype, b: anytype) Vec3 {
     const av: @Vector(3, f32) = getVector(a);
     const bv: @Vector(3, f32) = getVector(b);
-    return Vec3{ .data = av - bv };
+    return av - bv;
 }
 
 pub inline fn mul(a: anytype, b: anytype) Vec3 {
     const av: @Vector(3, f32) = getVector(a);
     const bv: @Vector(3, f32) = getVector(b);
-    return Vec3{ .data = av * bv };
+    return av * bv;
 }
 
 pub inline fn sdiv(a: anytype, b: anytype) @TypeOf(a, b) {
@@ -175,7 +173,7 @@ pub inline fn div(a: anytype, b: anytype) Vec3 {
     for (0..3) |i| {
         dv[i] = sdiv(av[i], bv[i]);
     }
-    return Vec3{ .data = dv };
+    return dv;
 }
 
 pub inline fn step(edge: anytype, x: anytype) Vec3 {
@@ -183,7 +181,7 @@ pub inline fn step(edge: anytype, x: anytype) Vec3 {
     const xv: @Vector(3, f32) = getVector(x);
     var result: Vec3 = undefined;
     for (0..3) |i| {
-        result.data[i] = if (xv[i] < ev[i]) 0.0 else 1.0;
+        result[i] = if (xv[i] < ev[i]) 0.0 else 1.0;
     }
     return result;
 }
@@ -191,25 +189,25 @@ pub inline fn step(edge: anytype, x: anytype) Vec3 {
 pub inline fn sign(x: Vec3) Vec3 {
     var result: Vec3 = undefined;
     for (0..3) |i| {
-        result.data[i] = if (x.data[i] < 0.0) -1.0 else 1.0;
+        result[i] = if (x[i] < 0.0) -1.0 else 1.0;
     }
     return result;
 }
 
 pub inline fn abs(x: Vec3) Vec3 {
-    return .{ .data = @abs(x.data) };
+    return @abs(x);
 }
 
 pub inline fn dot(a: Vec3, b: Vec3) f32 {
-    return @reduce(.Add, a.data * b.data);
+    return @reduce(.Add, a * b);
 }
 
 pub inline fn cross(a: Vec3, b: Vec3) Vec3 {
-    return Vec3{ .data = .{
-        a.data[1] * b.data[2] - a.data[2] * b.data[1],
-        a.data[2] * b.data[0] - a.data[0] * b.data[2],
-        a.data[0] * b.data[1] - a.data[1] * b.data[0],
-    } };
+    return .{
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    };
 }
 
 pub inline fn mag(a: Vec3) f32 {
@@ -264,84 +262,84 @@ pub inline fn sincos_approx(x: f32) SinCos {
 // TESTS -----
 
 test "add --- vector-vector" {
-    const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
-    const b = Vec3{ .data = .{ 0.9, 0.8, 0.1 } };
+    const a: Vec3 = .{ 1.4, 0.2, 0.3 };
+    const b: Vec3 = .{ 0.9, 0.8, 0.1 };
     const c = add(a, b);
-    try std.testing.expectApproxEqRel(2.3, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(1.0, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.4, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(2.3, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(1.0, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.4, c[2], 4 * eps);
 }
 
 test "add --- vector-scalar" {
-    const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
+    const a: Vec3 = .{ 1.4, 0.2, 0.3 };
     const b = 0.3;
     const c = add(a, b);
-    try std.testing.expectApproxEqRel(1.7, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(0.5, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.6, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(1.7, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(0.5, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.6, c[2], 4 * eps);
 }
 
 test "add --- scalar-vector" {
     const a = 0.7;
-    const b = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
+    const b: Vec3 = .{ 1.4, 0.2, 0.3 };
     const c = add(a, b);
-    try std.testing.expectApproxEqRel(2.1, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(0.9, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(1.0, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(2.1, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(0.9, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(1.0, c[2], 4 * eps);
 }
 
 test "sub --- vector-vector" {
-    const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
-    const b = Vec3{ .data = .{ 0.9, 0.8, 0.1 } };
+    const a: Vec3 = .{ 1.4, 0.2, 0.3 };
+    const b: Vec3 = .{ 0.9, 0.8, 0.1 };
     const c = sub(a, b);
-    try std.testing.expectApproxEqRel(0.5, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(-0.6, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.2, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(0.5, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(-0.6, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.2, c[2], 4 * eps);
 }
 
 test "sub --- vector-scalar" {
-    const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
+    const a: Vec3 = .{ 1.4, 0.2, 0.3 };
     const b = 0.3;
     const c = sub(a, b);
-    try std.testing.expectApproxEqRel(1.1, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(-0.1, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.0, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(1.1, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(-0.1, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.0, c[2], 4 * eps);
 }
 
 test "sub --- scalar-vector" {
     const a = 0.7;
-    const b = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
+    const b: Vec3 = .{ 1.4, 0.2, 0.3 };
     const c = sub(a, b);
-    try std.testing.expectApproxEqRel(-0.7, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(0.5, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.4, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(-0.7, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(0.5, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.4, c[2], 4 * eps);
 }
 
 test "mul --- vector-vector" {
-    const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
-    const b = Vec3{ .data = .{ 0.9, 0.8, 0.1 } };
+    const a: Vec3 = .{ 1.4, 0.2, 0.3 };
+    const b: Vec3 = .{ 0.9, 0.8, 0.1 };
     const c = mul(a, b);
-    try std.testing.expectApproxEqRel(1.4 * 0.9, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(0.2 * 0.8, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.3 * 0.1, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(1.4 * 0.9, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(0.2 * 0.8, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.3 * 0.1, c[2], 4 * eps);
 }
 
 test "mul --- vector-scalar" {
-    const a = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
+    const a: Vec3 = .{ 1.4, 0.2, 0.3 };
     const b = 1.2;
     const c = mul(a, b);
-    try std.testing.expectApproxEqRel(1.4 * 1.2, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(0.2 * 1.2, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.3 * 1.2, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(1.4 * 1.2, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(0.2 * 1.2, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.3 * 1.2, c[2], 4 * eps);
 }
 
 test "mul --- scalar-vector" {
     const a = 1.6;
-    const b = Vec3{ .data = .{ 1.4, 0.2, 0.3 } };
+    const b: Vec3 = .{ 1.4, 0.2, 0.3 };
     const c = mul(a, b);
-    try std.testing.expectApproxEqRel(1.4 * 1.6, c.data[0], 4 * eps);
-    try std.testing.expectApproxEqRel(0.2 * 1.6, c.data[1], 4 * eps);
-    try std.testing.expectApproxEqRel(0.3 * 1.6, c.data[2], 4 * eps);
+    try std.testing.expectApproxEqRel(1.4 * 1.6, c[0], 4 * eps);
+    try std.testing.expectApproxEqRel(0.2 * 1.6, c[1], 4 * eps);
+    try std.testing.expectApproxEqRel(0.3 * 1.6, c[2], 4 * eps);
 }
 
 test "sdiv --- comptime_float" {
@@ -359,55 +357,55 @@ test "sdiv --- zero by zero" {
 }
 
 test "dot --- unit circle x-y" {
-    const a = Vec3{ .data = .{ 0.0, 1.0, 0.0 } };
-    const b = Vec3{ .data = .{
+    const a: Vec3 = .{ 0.0, 1.0, 0.0 };
+    const b: Vec3 = .{
         std.math.cos(120.0 * (std.math.pi / 180.0)),
         std.math.sin(120.0 * (std.math.pi / 180.0)),
         0.0,
-    } };
+    };
     try std.testing.expectApproxEqRel(@sqrt(3.0) / 2.0, dot(a, b), 4 * eps);
 }
 
 test "dot --- unit circle x-z" {
-    const a = Vec3{ .data = .{ 0.0, 0.0, 1.0 } };
-    const b = Vec3{ .data = .{
+    const a: Vec3 = .{ 0.0, 0.0, 1.0 };
+    const b: Vec3 = .{
         std.math.cos(120.0 * (std.math.pi / 180.0)),
         0.0,
         std.math.sin(120.0 * (std.math.pi / 180.0)),
-    } };
+    };
     try std.testing.expectApproxEqRel(@sqrt(3.0) / 2.0, dot(a, b), 4 * eps);
 }
 
 test "dot --- orthogonal" {
-    const a = Vec3{ .data = .{
+    const a: Vec3 = .{
         std.math.cos(120.0 * (std.math.pi / 180.0)),
         std.math.sin(120.0 * (std.math.pi / 180.0)),
         0.0,
-    } };
-    const b = Vec3{ .data = .{
+    };
+    const b: Vec3 = .{
         0.0,
         0.0,
         1.0,
-    } };
+    };
     try std.testing.expectApproxEqRel(0.0, dot(a, b), 4 * eps);
 }
 
 test "cross --- make orthogonal axes" {
-    const x = Vec3{ .data = .{ 1.0, 0.0, 0.0 } };
-    const y = Vec3{ .data = .{ 0.0, 1.0, 0.0 } };
+    const x: Vec3 = .{ 1.0, 0.0, 0.0 };
+    const y: Vec3 = .{ 0.0, 1.0, 0.0 };
     const z: Vec3 = cross(x, y);
-    try std.testing.expectApproxEqAbs(0.0, z.data[0], 4 * eps);
-    try std.testing.expectApproxEqAbs(0.0, z.data[1], 4 * eps);
-    try std.testing.expectApproxEqAbs(1.0, z.data[2], 4 * eps);
+    try std.testing.expectApproxEqAbs(0.0, z[0], 4 * eps);
+    try std.testing.expectApproxEqAbs(0.0, z[1], 4 * eps);
+    try std.testing.expectApproxEqAbs(1.0, z[2], 4 * eps);
 }
 
 test "mag --- unit circle" {
-    const a = Vec3{ .data = .{ 1.0 / 2.0, @sqrt(3.0) / 2.0, 0.0 } };
+    const a: Vec3 = .{ 1.0 / 2.0, @sqrt(3.0) / 2.0, 0.0 };
     try std.testing.expectApproxEqAbs(1.0, mag(a), 4 * eps);
 }
 
 test "normalize --- makes magnitude 1" {
-    const a = Vec3{ .data = .{ 1.0, 1.0, 1.0 } };
+    const a: Vec3 = .{ 1.0, 1.0, 1.0 };
     try std.testing.expectApproxEqAbs(1.0, mag(normalize(a)), 4 * eps);
 }
 

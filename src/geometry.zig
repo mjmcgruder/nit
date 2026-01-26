@@ -4,6 +4,11 @@ const math = @import("math.zig");
 const mesh = @import("geometry_mesh.zig");
 const prim = @import("geometry_primitives.zig");
 
+test {
+    _ = mesh;
+    _ = prim;
+}
+
 pub const GeometryType = union(enum) {
     sphere: prim.Sphere,
     box: prim.Box,
@@ -20,15 +25,15 @@ pub const Object = struct {
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } },
-    refl: math.Vec3 = math.Vec3{ .data = .{ 1.0, 1.0, 1.0 } },
-    emit: math.Vec3 = math.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
+    refl: math.Vec3 = .{ 1.0, 1.0, 1.0 },
+    emit: math.Vec3 = .{ 0.0, 0.0, 0.0 },
     mtrl: Material = Material.diffuse,
 };
 
 pub const IntersectResult = struct {
     geom: prim.IntersectResult = .{},
-    refl: math.Vec3 = .{},
-    emit: math.Vec3 = .{},
+    refl: math.Vec3 = .{ 0.0, 0.0, 0.0 },
+    emit: math.Vec3 = .{ 0.0, 0.0, 0.0 },
     mtrl: Material = Material.diffuse,
 };
 

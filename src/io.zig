@@ -14,9 +14,9 @@ pub const Settings = struct {
     num_samples: usize = 1 << 0,
     window_w: usize = 1920,
     window_h: usize = 1080,
-    camera_position: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
-    target_position: m.Vec3 = m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } },
-    up_vector: m.Vec3 = m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } },
+    camera_position: m.Vec3 = .{ 0.0, 0.0, 0.0 },
+    target_position: m.Vec3 = .{ 1.0, 0.0, 0.0 },
+    up_vector: m.Vec3 = .{ 0.0, 1.0, 0.0 },
     field_of_view: f32 = 90.0,
 };
 
@@ -113,11 +113,11 @@ fn parseVec3(str: []const u8) !m.Vec3 {
     const end_elem2 = seekWhitespace(str, begin_elem2);
     const elem2: []const u8 = str[begin_elem2..end_elem2];
     if (elem2.len == 0) return ParsingError.FormatError;
-    return m.Vec3{ .data = .{
+    return .{
         try std.fmt.parseFloat(f32, elem0),
         try std.fmt.parseFloat(f32, elem1),
         try std.fmt.parseFloat(f32, elem2),
-    } };
+    };
 }
 
 fn parseVec4(str: []const u8) !m.Vec4 {
@@ -272,7 +272,7 @@ pub fn readInput(
                         },
                         .rotate => {
                             const r = (try parseVec4(val)).data;
-                            transform = m.rotateAboutAxis(.{ .data = .{ r[0], r[1], r[2] } }, r[3]);
+                            transform = m.rotateAboutAxis(.{ r[0], r[1], r[2] }, r[3]);
                         },
                         .scale => transform = m.scale(try std.fmt.parseFloat(f32, val)),
                         .translate => transform = m.translate(try parseVec3(val)),
@@ -342,10 +342,10 @@ pub fn readASCIISTL(
             trim = try reader.takeDelimiterInclusive('\n');
             trim = getNextWord(trim, &word);
             if (!std.mem.eql(u8, word, "vertex")) return STLReadError.FormatError;
-            var vertex: m.Vec3 = .{};
+            var vertex: m.Vec3 = .{ 0.0, 0.0, 0.0 };
             for (0..3) |i| {
                 trim = getNextWord(trim, &word);
-                vertex.data[i] = try std.fmt.parseFloat(f32, word);
+                vertex[i] = try std.fmt.parseFloat(f32, word);
             }
             try vrt.append(allocator, vertex);
             try ind.append(allocator, @as(u32, @intCast(ind.items.len))); // TODO: fails if too many indices
@@ -376,9 +376,9 @@ test "readInput --- runs" {
     try std.testing.expectEqual(settings.num_samples, 1024);
     try std.testing.expectEqual(settings.window_w, 1920);
     try std.testing.expectEqual(settings.window_h, 1080);
-    try std.testing.expectEqual(settings.camera_position, m.Vec3{ .data = .{ -2.0, 0.0, 0.0 } });
-    try std.testing.expectEqual(settings.target_position, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
-    try std.testing.expectEqual(settings.up_vector, m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } });
+    try std.testing.expectEqual(settings.camera_position, @as(m.Vec3, .{ -2.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(settings.target_position, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(settings.up_vector, @as(m.Vec3, .{ 0.0, 1.0, 0.0 }));
     try std.testing.expectEqual(settings.field_of_view, 90.0);
 
     const scene = input.scene.items;
@@ -390,38 +390,38 @@ test "readInput --- runs" {
         .{ 0.0, 0.0, 0.8, -1.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } });
-    try std.testing.expectEqual(scene[0].refl, m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
-    try std.testing.expectEqual(scene[0].emit, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(scene[0].refl, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
+    try std.testing.expectEqual(scene[0].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[0].mtrl, geom.Material.specular);
 
-    try std.testing.expectEqual(scene[1].geom.box.size, m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
+    try std.testing.expectEqual(scene[1].geom.box.size, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
     try std.testing.expectEqual(scene[1].trfm, m.Mat4{ .data = .{
         .{ 0.08047379, -0.031061722, 0.050587934, 0 },
         .{ 0.050587934, 0.08047379, -0.031061722, 0 },
         .{ -0.031061722, 0.050587934, 0.08047379, 1 },
         .{ 0, 0, 0, 1 },
     } });
-    try std.testing.expectEqual(scene[1].refl, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
-    try std.testing.expectEqual(scene[1].emit, m.Vec3{ .data = .{ 12.0, 12.0, 12.0 } });
+    try std.testing.expectEqual(scene[1].refl, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(scene[1].emit, @as(m.Vec3, .{ 12.0, 12.0, 12.0 }));
     try std.testing.expectEqual(scene[1].mtrl, geom.Material.diffuse);
 
     const mesh: geom_mesh.Mesh = scene[2].geom.mesh;
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[0]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[1]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt[mesh.ind[2]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[0]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[1]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[2]]);
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[3]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[4]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[5]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[3]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[4]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[5]]);
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[6]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt[mesh.ind[7]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[8]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[6]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[7]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[8]]);
 
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 1.0, 0.0, 0.0 } }, mesh.vrt[mesh.ind[9]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 0.0, 1.0 } }, mesh.vrt[mesh.ind[10]]);
-    try std.testing.expectEqual(m.Vec3{ .data = .{ 0.0, 1.0, 0.0 } }, mesh.vrt[mesh.ind[11]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[9]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[10]]);
+    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[11]]);
 
     try std.testing.expectEqual(scene[2].trfm, m.Mat4{ .data = .{
         .{ 1.0, 0.0, 0.0, 0.0 },
@@ -429,7 +429,7 @@ test "readInput --- runs" {
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } });
-    try std.testing.expectEqual(scene[2].refl, m.Vec3{ .data = .{ 1.0, 1.0, 1.0 } });
-    try std.testing.expectEqual(scene[2].emit, m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } });
+    try std.testing.expectEqual(scene[2].refl, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
+    try std.testing.expectEqual(scene[2].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[2].mtrl, geom.Material.diffuse);
 }

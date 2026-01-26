@@ -56,8 +56,8 @@ fn dispatchRender(
 }
 
 const BounceNode = struct {
-    brdf: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
-    emit: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } },
+    brdf: m.Vec3 = .{ 0.0, 0.0, 0.0 },
+    emit: m.Vec3 = .{ 0.0, 0.0, 0.0 },
     c_th: f32 = 0.0,
     prob: f32 = 1.0,
 };
@@ -132,7 +132,7 @@ fn renderPixels(
         const pixel: *io.Pixel = &frame_buffer[pixel_i];
 
         var sample_i: usize = 0;
-        var pixel_color: m.Vec3 = m.Vec3{ .data = .{ 0.0, 0.0, 0.0 } };
+        var pixel_color: m.Vec3 = .{ 0.0, 0.0, 0.0 };
         sample_loop: while (sample_i < settings.num_samples) : (sample_i += 1) {
             stack_i = 0;
 
@@ -180,7 +180,7 @@ fn renderPixels(
             }
 
             // accumulate incoming color by unwinding bounce stack
-            var incoming: m.Vec3 = m.Vec3{}; // start black
+            var incoming: m.Vec3 = .{ 0.0, 0.0, 0.0 }; // start black
             while (stack_i > 0) {
                 stack_i -= 1;
                 const node: BounceNode = bounce_stack[stack_i];
@@ -199,9 +199,9 @@ fn renderPixels(
 
         // set final color value
 
-        pixel.r = @intFromFloat(m.clamp(pixel_color.data[0], 0.0, 1.0) * 255.0);
-        pixel.g = @intFromFloat(m.clamp(pixel_color.data[1], 0.0, 1.0) * 255.0);
-        pixel.b = @intFromFloat(m.clamp(pixel_color.data[2], 0.0, 1.0) * 255.0);
+        pixel.r = @intFromFloat(m.clamp(pixel_color[0], 0.0, 1.0) * 255.0);
+        pixel.g = @intFromFloat(m.clamp(pixel_color[1], 0.0, 1.0) * 255.0);
+        pixel.b = @intFromFloat(m.clamp(pixel_color[2], 0.0, 1.0) * 255.0);
     }
 }
 
