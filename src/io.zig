@@ -260,7 +260,7 @@ pub fn readInput(
                 var object: *geom.Object = &scene.items[scene.items.len - 1];
 
                 if (object_map.get(key)) |setting| {
-                    var transform: m.Mat4 = .{};
+                    var transform: m.Mat4 = m.identity();
 
                     switch (setting) {
                         .geometry => {
@@ -384,23 +384,23 @@ test "readInput --- runs" {
     const scene = input.scene.items;
 
     try std.testing.expectEqual(scene[0].geom.sphere.r, 0.1);
-    try std.testing.expectEqual(scene[0].trfm, m.Mat4{ .data = .{
+    try std.testing.expectEqual(scene[0].trfm, @as(m.Mat4, .{
         .{ 0.8, 0.0, 0.0, 0.0 },
         .{ 0.0, 0.8, 0.0, 0.0 },
         .{ 0.0, 0.0, 0.8, -1.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } });
+    }));
     try std.testing.expectEqual(scene[0].refl, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
     try std.testing.expectEqual(scene[0].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[0].mtrl, geom.Material.specular);
 
     try std.testing.expectEqual(scene[1].geom.box.size, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
-    try std.testing.expectEqual(scene[1].trfm, m.Mat4{ .data = .{
+    try std.testing.expectEqual(scene[1].trfm, @as(m.Mat4, .{
         .{ 0.08047379, -0.031061722, 0.050587934, 0 },
         .{ 0.050587934, 0.08047379, -0.031061722, 0 },
         .{ -0.031061722, 0.050587934, 0.08047379, 1 },
         .{ 0, 0, 0, 1 },
-    } });
+    }));
     try std.testing.expectEqual(scene[1].refl, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[1].emit, @as(m.Vec3, .{ 12.0, 12.0, 12.0 }));
     try std.testing.expectEqual(scene[1].mtrl, geom.Material.diffuse);
@@ -423,12 +423,12 @@ test "readInput --- runs" {
     try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[10]]);
     try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[11]]);
 
-    try std.testing.expectEqual(scene[2].trfm, m.Mat4{ .data = .{
+    try std.testing.expectEqual(scene[2].trfm, @as(m.Mat4, .{
         .{ 1.0, 0.0, 0.0, 0.0 },
         .{ 0.0, 1.0, 0.0, 0.0 },
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } });
+    }));
     try std.testing.expectEqual(scene[2].refl, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
     try std.testing.expectEqual(scene[2].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[2].mtrl, geom.Material.diffuse);

@@ -4,14 +4,7 @@ pub const Vec3 = @Vector(3, f32);
 
 pub const Vec4 = @Vector(4, f32);
 
-pub const Mat4 = struct {
-    data: [4]@Vector(4, f32) = .{
-        .{ 1.0, 0.0, 0.0, 0.0 },
-        .{ 0.0, 1.0, 0.0, 0.0 },
-        .{ 0.0, 0.0, 1.0, 0.0 },
-        .{ 0.0, 0.0, 0.0, 1.0 },
-    },
-};
+pub const Mat4 = [4]@Vector(4, f32);
 
 pub fn makeVec3(src: [3]f32) Vec3 {
     return .{ src[0], src[1], src[2] };
@@ -36,7 +29,7 @@ pub fn toHomogeneousDir(src: Vec3) Vec4 {
 pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
     var res: Vec4 = undefined;
     for (0..4) |r| {
-        res[r] = @reduce(.Add, mat.data[r] * vec);
+        res[r] = @reduce(.Add, mat[r] * vec);
     }
     return res;
 }
@@ -44,9 +37,9 @@ pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
 pub fn matmul4(a: Mat4, b: Mat4) Mat4 {
     var res: Mat4 = undefined;
     for (0..4) |c| {
-        const col: Vec4 = .{ b.data[0][c], b.data[1][c], b.data[2][c], b.data[3][c] };
+        const col: Vec4 = .{ b[0][c], b[1][c], b[2][c], b[3][c] };
         for (0..4) |r| {
-            res.data[r][c] = @reduce(.Add, a.data[r] * col);
+            res[r][c] = @reduce(.Add, a[r] * col);
         }
     }
     return res;
@@ -55,16 +48,16 @@ pub fn matmul4(a: Mat4, b: Mat4) Mat4 {
 /// adapted from:
 ///   https://fgiesen.wordpress.com/2013/07/09/simd-transposes-1/
 pub fn mattnp4(mat: Mat4) Mat4 {
-    const a0 = @shuffle(f32, mat.data[0], mat.data[1], @Vector(4, i32){ 0, -1, 1, -2 });
-    const a1 = @shuffle(f32, mat.data[0], mat.data[1], @Vector(4, i32){ 2, -3, 3, -4 });
-    const a2 = @shuffle(f32, mat.data[2], mat.data[3], @Vector(4, i32){ 0, -1, 1, -2 });
-    const a3 = @shuffle(f32, mat.data[2], mat.data[3], @Vector(4, i32){ 2, -3, 3, -4 });
-    return .{ .data = .{
+    const a0 = @shuffle(f32, mat[0], mat[1], @Vector(4, i32){ 0, -1, 1, -2 });
+    const a1 = @shuffle(f32, mat[0], mat[1], @Vector(4, i32){ 2, -3, 3, -4 });
+    const a2 = @shuffle(f32, mat[2], mat[3], @Vector(4, i32){ 0, -1, 1, -2 });
+    const a3 = @shuffle(f32, mat[2], mat[3], @Vector(4, i32){ 2, -3, 3, -4 });
+    return .{
         @shuffle(f32, a0, a2, @Vector(4, i32){ 0, 1, -1, -2 }),
         @shuffle(f32, a0, a2, @Vector(4, i32){ 2, 3, -3, -4 }),
         @shuffle(f32, a1, a3, @Vector(4, i32){ 0, 1, -1, -2 }),
         @shuffle(f32, a1, a3, @Vector(4, i32){ 2, 3, -3, -4 }),
-    } };
+    };
 }
 
 /// adapted from:
@@ -73,39 +66,39 @@ pub fn mattnp4(mat: Mat4) Mat4 {
 /// should be 1.
 pub fn invertTransform(mat: Mat4) Mat4 {
     const tnp: Mat4 = mattnp4(mat);
-    const ixsq: f32 = 1.0 / @reduce(.Add, tnp.data[0] * tnp.data[0]);
-    const iysq: f32 = 1.0 / @reduce(.Add, tnp.data[1] * tnp.data[1]);
-    const izsq: f32 = 1.0 / @reduce(.Add, tnp.data[2] * tnp.data[2]);
+    const ixsq: f32 = 1.0 / @reduce(.Add, tnp[0] * tnp[0]);
+    const iysq: f32 = 1.0 / @reduce(.Add, tnp[1] * tnp[1]);
+    const izsq: f32 = 1.0 / @reduce(.Add, tnp[2] * tnp[2]);
     var inv: Mat4 = tnp;
-    const trs: @Vector(4, f32) = .{ tnp.data[3][0], tnp.data[3][1], tnp.data[3][2], 0.0 };
-    inv.data[0] *= @as(@Vector(4, f32), @splat(ixsq));
-    inv.data[1] *= @as(@Vector(4, f32), @splat(iysq));
-    inv.data[2] *= @as(@Vector(4, f32), @splat(izsq));
-    inv.data[0][3] = -ixsq * @reduce(.Add, tnp.data[0] * trs);
-    inv.data[1][3] = -iysq * @reduce(.Add, tnp.data[1] * trs);
-    inv.data[2][3] = -izsq * @reduce(.Add, tnp.data[2] * trs);
-    inv.data[3][0] = 0.0;
-    inv.data[3][1] = 0.0;
-    inv.data[3][2] = 0.0;
+    const trs: @Vector(4, f32) = .{ tnp[3][0], tnp[3][1], tnp[3][2], 0.0 };
+    inv[0] *= @as(@Vector(4, f32), @splat(ixsq));
+    inv[1] *= @as(@Vector(4, f32), @splat(iysq));
+    inv[2] *= @as(@Vector(4, f32), @splat(izsq));
+    inv[0][3] = -ixsq * @reduce(.Add, tnp[0] * trs);
+    inv[1][3] = -iysq * @reduce(.Add, tnp[1] * trs);
+    inv[2][3] = -izsq * @reduce(.Add, tnp[2] * trs);
+    inv[3][0] = 0.0;
+    inv[3][1] = 0.0;
+    inv[3][2] = 0.0;
     return inv;
 }
 
 pub fn translate(vec: Vec3) Mat4 { // TODO: this naming scheme is... bad?
-    return .{ .data = .{
+    return .{
         .{ 1.0, 0.0, 0.0, vec[0] },
         .{ 0.0, 1.0, 0.0, vec[1] },
         .{ 0.0, 0.0, 1.0, vec[2] },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } };
+    };
 }
 
 pub fn scale(multiple: f32) Mat4 {
-    return .{ .data = .{
+    return .{
         .{ multiple, 0.0, 0.0, 0.0 },
         .{ 0.0, multiple, 0.0, 0.0 },
         .{ 0.0, 0.0, multiple, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } };
+    };
 }
 
 pub fn rotateAboutAxis(axis: Vec3, angled: f32) Mat4 {
@@ -116,12 +109,21 @@ pub fn rotateAboutAxis(axis: Vec3, angled: f32) Mat4 {
     const y: f32 = axis_normalized[1];
     const z: f32 = axis_normalized[2];
     const omc: f32 = 1.0 - c;
-    return .{ .data = .{
+    return .{
         .{ omc * x * x + c, omc * x * y - s * z, omc * x * z + s * y, 0.0 },
         .{ omc * x * y + s * z, omc * y * y + c, omc * y * z - s * x, 0.0 },
         .{ omc * x * z - s * y, omc * y * z + s * x, omc * z * z + c, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } };
+    };
+}
+
+pub fn identity() Mat4 {
+    return .{
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    };
 }
 
 pub const unit_x: Vec3 = .{ 1.0, 0.0, 0.0 };
@@ -435,26 +437,26 @@ test "sincos_approx --- sin cos quadrant 3" {
     try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
 }
 
-test "Mat4 --- identity by default" {
-    const mat: Mat4 = .{};
+test "Mat4 --- identity" {
+    const mat: Mat4 = identity();
     for (0..4) |r| {
         for (0..4) |c| {
             if (r == c) {
-                try std.testing.expectEqual(1.0, mat.data[r][c]);
+                try std.testing.expectEqual(1.0, mat[r][c]);
             } else {
-                try std.testing.expectEqual(0.0, mat.data[r][c]);
+                try std.testing.expectEqual(0.0, mat[r][c]);
             }
         }
     }
 }
 
 test "matvec4 --- identity" {
-    const mat: Mat4 = .{ .data = .{
+    const mat: Mat4 = .{
         .{ 1.0, 0.0, 0.0, 0.0 },
         .{ 0.0, 1.0, 0.0, 0.0 },
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } };
+    };
     const vec: Vec4 = .{ 1.4, 2.7, 3.1, 6.2 };
 
     const vec_new: Vec4 = matvec4(mat, vec);
@@ -465,12 +467,12 @@ test "matvec4 --- identity" {
 }
 
 test "matvec4 --- axis flip" {
-    const mat: Mat4 = .{ .data = .{
+    const mat: Mat4 = .{
         .{ 0.0, 1.0, 0.0, 0.0 },
         .{ 1.0, 0.0, 0.0, 0.0 },
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } };
+    };
     const vec: Vec4 = .{ 1.0, 0.0, 0.0, 0.0 };
 
     const vec_new: Vec4 = matvec4(mat, vec);
@@ -482,29 +484,29 @@ test "matvec4 --- axis flip" {
 }
 
 test "mattnp4 --- integer matrix" {
-    const mat: Mat4 = .{ .data = .{
+    const mat: Mat4 = .{
         .{ 0, 9, 5, 3 },
         .{ 0, 1, 2, 2 },
         .{ 7, 1, 2, 3 },
         .{ 1, 8, 2, 4 },
-    } };
+    };
 
     const tnp: Mat4 = mattnp4(mat);
 
     for (0..4) |r| {
         for (0..4) |c| {
-            try std.testing.expectEqual(mat.data[c][r], tnp.data[r][c]);
+            try std.testing.expectEqual(mat[c][r], tnp[r][c]);
         }
     }
 }
 
 test "matvec4 --- orthonormal, transpose, identity" {
-    const mat: Mat4 = .{ .data = .{
+    const mat: Mat4 = .{
         .{ 0, 0, 1, 0 },
         .{ 0, 1, 0, 0 },
         .{ 1, 0, 0, 0 },
         .{ 0, 0, 0, 1 },
-    } };
+    };
 
     const inv: Mat4 = mattnp4(mat);
 
@@ -513,21 +515,21 @@ test "matvec4 --- orthonormal, transpose, identity" {
     for (0..4) |r| {
         for (0..4) |c| {
             if (r == c) {
-                try std.testing.expectApproxEqAbs(1.0, test_identity.data[r][c], eps);
+                try std.testing.expectApproxEqAbs(1.0, test_identity[r][c], eps);
             } else {
-                try std.testing.expectApproxEqAbs(0.0, test_identity.data[r][c], eps);
+                try std.testing.expectApproxEqAbs(0.0, test_identity[r][c], eps);
             }
         }
     }
 }
 
 test "invertTransform --- recovers identity" {
-    const mat: Mat4 = .{ .data = .{
+    const mat: Mat4 = .{
         .{ 0.0, 7.0, 0.0, 0.2 },
         .{ 0.0, 0.0, 1.0, 7.0 },
         .{ 3.0, 0.0, 0.0, 2.7 },
         .{ 0.0, 0.0, 0.0, 1.0 },
-    } };
+    };
 
     const inv: Mat4 = invertTransform(mat);
 
@@ -536,9 +538,9 @@ test "invertTransform --- recovers identity" {
     for (0..4) |r| {
         for (0..4) |c| {
             if (r == c) {
-                try std.testing.expectApproxEqAbs(1.0, test_identity.data[r][c], eps);
+                try std.testing.expectApproxEqAbs(1.0, test_identity[r][c], eps);
             } else {
-                try std.testing.expectApproxEqAbs(0.0, test_identity.data[r][c], eps);
+                try std.testing.expectApproxEqAbs(0.0, test_identity[r][c], eps);
             }
         }
     }
