@@ -137,12 +137,12 @@ fn parseVec4(str: []const u8) !m.Vec4 {
     const end_elem3 = seekWhitespace(str, begin_elem3);
     const elem3: []const u8 = str[begin_elem3..end_elem3];
     if (elem3.len == 0) return ParsingError.FormatError;
-    return m.Vec4{ .data = .{
+    return .{
         try std.fmt.parseFloat(f32, elem0),
         try std.fmt.parseFloat(f32, elem1),
         try std.fmt.parseFloat(f32, elem2),
         try std.fmt.parseFloat(f32, elem3),
-    } };
+    };
 }
 
 const InputParseMode = enum {
@@ -271,7 +271,7 @@ pub fn readInput(
                             }
                         },
                         .rotate => {
-                            const r = (try parseVec4(val)).data;
+                            const r = try parseVec4(val);
                             transform = m.rotateAboutAxis(.{ r[0], r[1], r[2] }, r[3]);
                         },
                         .scale => transform = m.scale(try std.fmt.parseFloat(f32, val)),

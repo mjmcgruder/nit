@@ -2,9 +2,7 @@ const std = @import("std");
 
 pub const Vec3 = @Vector(3, f32);
 
-pub const Vec4 = struct {
-    data: @Vector(4, f32) = @Vector(4, f32){ 0.0, 0.0, 0.0, 0.0 },
-};
+pub const Vec4 = @Vector(4, f32);
 
 pub const Mat4 = struct {
     data: [4]@Vector(4, f32) = .{
@@ -20,15 +18,15 @@ pub fn makeVec3(src: [3]f32) Vec3 {
 }
 
 pub fn toVec3(src: Vec4) Vec3 {
-    return .{ src.data[0], src.data[1], src.data[2] };
+    return .{ src[0], src[1], src[2] };
 }
 
 pub fn toVec4(src: Vec3) Vec4 {
-    return Vec4{ .data = .{ src[0], src[1], src[2], 0.0 } };
+    return .{ src[0], src[1], src[2], 0.0 };
 }
 
 pub fn toHomogeneousPos(src: Vec3) Vec4 {
-    return Vec4{ .data = .{ src[0], src[1], src[2], 1.0 } };
+    return .{ src[0], src[1], src[2], 1.0 };
 }
 
 pub fn toHomogeneousDir(src: Vec3) Vec4 {
@@ -38,7 +36,7 @@ pub fn toHomogeneousDir(src: Vec3) Vec4 {
 pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
     var res: Vec4 = undefined;
     for (0..4) |r| {
-        res.data[r] = @reduce(.Add, mat.data[r] * vec.data);
+        res[r] = @reduce(.Add, mat.data[r] * vec);
     }
     return res;
 }
@@ -46,9 +44,9 @@ pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
 pub fn matmul4(a: Mat4, b: Mat4) Mat4 {
     var res: Mat4 = undefined;
     for (0..4) |c| {
-        const col: Vec4 = .{ .data = .{ b.data[0][c], b.data[1][c], b.data[2][c], b.data[3][c] } };
+        const col: Vec4 = .{ b.data[0][c], b.data[1][c], b.data[2][c], b.data[3][c] };
         for (0..4) |r| {
-            res.data[r][c] = @reduce(.Add, a.data[r] * col.data);
+            res.data[r][c] = @reduce(.Add, a.data[r] * col);
         }
     }
     return res;
@@ -137,7 +135,7 @@ pub inline fn set3(val: f32) Vec3 {
 }
 
 pub inline fn set4(val: f32) Vec4 {
-    return .{ .data = .{ val, val, val, val } };
+    return .{ val, val, val, val };
 }
 
 inline fn getVector(a: anytype) @Vector(3, f32) {
@@ -457,12 +455,12 @@ test "matvec4 --- identity" {
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } };
-    const vec: Vec4 = .{ .data = .{ 1.4, 2.7, 3.1, 6.2 } };
+    const vec: Vec4 = .{ 1.4, 2.7, 3.1, 6.2 };
 
     const vec_new: Vec4 = matvec4(mat, vec);
 
     for (0..4) |i| {
-        try std.testing.expectEqual(vec.data[i], vec_new.data[i]);
+        try std.testing.expectEqual(vec[i], vec_new[i]);
     }
 }
 
@@ -473,14 +471,14 @@ test "matvec4 --- axis flip" {
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     } };
-    const vec: Vec4 = .{ .data = .{ 1.0, 0.0, 0.0, 0.0 } };
+    const vec: Vec4 = .{ 1.0, 0.0, 0.0, 0.0 };
 
     const vec_new: Vec4 = matvec4(mat, vec);
 
-    try std.testing.expectEqual(0.0, vec_new.data[0]);
-    try std.testing.expectEqual(1.0, vec_new.data[1]);
-    try std.testing.expectEqual(0.0, vec_new.data[2]);
-    try std.testing.expectEqual(0.0, vec_new.data[3]);
+    try std.testing.expectEqual(0.0, vec_new[0]);
+    try std.testing.expectEqual(1.0, vec_new[1]);
+    try std.testing.expectEqual(0.0, vec_new[2]);
+    try std.testing.expectEqual(0.0, vec_new[3]);
 }
 
 test "mattnp4 --- integer matrix" {
