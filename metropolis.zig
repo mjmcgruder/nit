@@ -199,8 +199,11 @@ fn renderPixels(
 
         // set final color value
 
+        std.debug.assert(!std.math.isNan(pixel_color[0]));
         pixel.r = @intFromFloat(m.clamp(pixel_color[0], 0.0, 1.0) * 255.0);
+        std.debug.assert(!std.math.isNan(pixel_color[1]));
         pixel.g = @intFromFloat(m.clamp(pixel_color[1], 0.0, 1.0) * 255.0);
+        std.debug.assert(!std.math.isNan(pixel_color[2]));
         pixel.b = @intFromFloat(m.clamp(pixel_color[2], 0.0, 1.0) * 255.0);
     }
 }

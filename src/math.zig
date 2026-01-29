@@ -1,9 +1,7 @@
 const std = @import("std");
 
 pub const Vec3 = @Vector(3, f32);
-
 pub const Vec4 = @Vector(4, f32);
-
 pub const Mat4 = [4]@Vector(4, f32);
 
 pub fn makeVec3(src: [3]f32) Vec3 {
