@@ -187,32 +187,65 @@ pub fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResult {
     return .{ .dist = t, .norm = if (dot(n, ray.d) < 0.0) nn else mul(-1.0, nn) };
 }
 
-test "intersectRayTriangle coplanar" {
-    const tri: Triangle = .{ .vertices = .{
-        .{ 0.0, 0.0, 0.0 },
-        .{ 1.0, 0.0, 0.0 },
-        .{ 0.0, 1.0, 0.0 }
-    } };
-    const ray: Ray = .{ .o = .{ -0.1, 0.1, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
-    const result = intersectRayTriangle(ray, tri);
-    if (result == null) {
-        try std.testing.expect(true);
-    } else {
-        try std.testing.expect(false);
-    }
+const test_tri_flat = Triangle{ .vertices = .{
+    .{ 0.0, 0.0, 0.0 },
+    .{ 1.0, 0.0, 0.0 },
+    .{ 0.0, 1.0, 0.0 },
+} };
+
+const test_tri_tilt = Triangle{ .vertices = .{
+    .{ 1.0, 0.0, 0.0 },
+    .{ 0.0, 1.0, 0.0 },
+    .{ 0.0, 0.0, 1.0 },
+} };
+
+test "intersectRayTriangle parallel" {
+    const ray: Ray = .{ .o = .{ 0.1, 0.1, 0.1 }, .d = .{ 1.0, 0.0, 0.0 } };
+    try std.testing.expectEqual(null, intersectRayTriangle(ray, test_tri_flat));
 }
 
-test "intersectRayTriangle glance" {
-    const tri: Triangle = .{ .vertices = .{
-        .{ 0.0, 0.0, 0.0 },
-        .{ 1.0, 0.0, 0.0 },
-        .{ 0.0, 1.0, 0.0 },
-    } };
+test "intersectRayTriangle coplanar" {
+    const ray: Ray = .{ .o = .{ -0.1, 0.1, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
+    try std.testing.expectEqual(null, intersectRayTriangle(ray, test_tri_flat));
+}
+
+test "intersectRayTriangle low side angled hit" {
+    const ray: Ray = .{ .o = .{ -2.0, 1.0 / 3.0, 1.0 / 3.0 }, .d = .{ 1.0, 0.0, 0.0 } };
+    const result = intersectRayTriangle(ray, test_tri_tilt) orelse unreachable;
+    try std.testing.expectApproxEqAbs(7.0 / 3.0, result.dist, 4 * math.eps);
+    try std.testing.expectApproxEqAbs(-1.0 / @sqrt(3.0), result.norm[0], 4 * math.eps);
+    try std.testing.expectApproxEqAbs(-1.0 / @sqrt(3.0), result.norm[1], 4 * math.eps);
+    try std.testing.expectApproxEqAbs(-1.0 / @sqrt(3.0), result.norm[2], 4 * math.eps);
+}
+
+test "intersectRayTriangle high side angled hit" {
+    const ray: Ray = .{ .o = .{ 7.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 }, .d = .{ -1.0, 0.0, 0.0 } };
+    const result = intersectRayTriangle(ray, test_tri_tilt) orelse unreachable;
+    try std.testing.expectApproxEqAbs(2.0, result.dist, 4 * math.eps);
+    try std.testing.expectApproxEqAbs(1.0 / @sqrt(3.0), result.norm[0], 4 * math.eps);
+    try std.testing.expectApproxEqAbs(1.0 / @sqrt(3.0), result.norm[1], 4 * math.eps);
+    try std.testing.expectApproxEqAbs(1.0 / @sqrt(3.0), result.norm[2], 4 * math.eps);
+}
+
+test "intersectRayTriangle miss with u < 0" {
+    const ray: Ray = .{ .o = .{ 0.0, -0.1, 0.0 }, .d = .{ 1.0, 0.0, 1.0 } };
+    try std.testing.expectEqual(null, intersectRayTriangle(ray, test_tri_tilt));
+}
+
+test "intersectRayTriangle miss with v < 0" {
+    const ray: Ray = .{ .o = .{ 0.0, 0.0, -0.1 }, .d = .{ 1.0, 1.0, 0.0 } };
+    try std.testing.expectEqual(null, intersectRayTriangle(ray, test_tri_tilt));
+}
+
+test "intersectRayTriangle miss with u + v > 1" {
+    const ray: Ray = .{ .o = .{ -0.1, 0.0, 0.0 }, .d = .{ 0.0, 1.0, 1.0 } };
+    try std.testing.expectEqual(null, intersectRayTriangle(ray, test_tri_tilt));
+}
+
+test "intersectRayTriangle behind ray origin" {
     const ray: Ray = .{
-        .o = .{ 1.0 + 0.1, 1.0 + 0.2, -1.0 },
-        .d = math.normalize(@as(Vec3, .{ -1.0, -1.0, 1.0 })),
+        .o = add(@as(Vec3, @splat(1.0 / 3.0)), @as(Vec3, @splat(0.1))),
+        .d = .{ 1.0, 1.0, 1.0 },
     };
-    const result = intersectRayTriangle(ray, tri) orelse unreachable;
-    try std.testing.expectApproxEqRel(@sqrt(3.0), result.dist, 1e-5);
-    try std.testing.expectEqual(@as(Vec3, .{ 0.0, 0.0, -1.0 }), result.norm);
+    try std.testing.expectEqual(null, intersectRayTriangle(ray, test_tri_tilt));
 }
