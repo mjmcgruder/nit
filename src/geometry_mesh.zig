@@ -193,12 +193,12 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
 
     const root_center: m.Vec3 = m.makeVec3(mesh.bvh.nodes[0].center);
     const root_extent: m.Vec3 = m.makeVec3(mesh.bvh.nodes[0].extent);
-    if (prim.intersectRayBox(
+    if (prim.intersectRayBoxDist(
         .{ .d = ray.d, .o = m.sub(ray.o, root_center) },
         .{ .size = root_extent },
-    )) |root_intersect| {
+    )) |root_dist| {
         traversal_stack[0].indx = 0;
-        traversal_stack[0].dist = root_intersect.dist;
+        traversal_stack[0].dist = root_dist;
     } else {
         return null;
     }
@@ -215,17 +215,17 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
             const child0: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset];
             const child1: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset + 1];
 
-            const intersect0: prim.IntersectResult = prim.intersectRayBox(
+            const dist0: f32 = prim.intersectRayBoxDist(
                 .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child0.center)) },
                 .{ .size = m.makeVec3(child0.extent) },
-            ) orelse .{ .dist = std.math.floatMax(f32) };
-            const intersect1: prim.IntersectResult = prim.intersectRayBox(
+            ) orelse std.math.floatMax(f32);
+            const dist1: f32 = prim.intersectRayBoxDist(
                 .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child1.center)) },
                 .{ .size = m.makeVec3(child1.extent) },
-            ) orelse .{ .dist = std.math.floatMax(f32) };
+            ) orelse std.math.floatMax(f32);
 
-            var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = intersect0.dist };
-            var new_node1: RayMeshStackNode = .{ .indx = node.offset + 1, .dist = intersect1.dist };
+            var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = dist0 };
+            var new_node1: RayMeshStackNode = .{ .indx = node.offset + 1, .dist = dist1 };
 
             if (new_node0.dist < new_node1.dist) {
                 std.mem.swap(RayMeshStackNode, &new_node0, &new_node1);

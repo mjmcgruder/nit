@@ -103,12 +103,25 @@ test "intersectRaySphere sphere behind ray origin" {
     }
 }
 
-pub fn intersectRayBox(ray: Ray, box: Box) ?IntersectResult {
+fn intersectRayBoxSlab(ray: Ray, box: Box) struct { Vec3, Vec3 } {
     const ird: Vec3 = div(1.0, ray.d); // invserse ray direction
     const dt0: Vec3 = mul(ird, ray.o); // parametric distance to axis-orthogonal plane at 0
     const bdc: Vec3 = mul(abs(ird), box.size); // box distance correction
     const atn: Vec3 = sub(mul(-1.0, dt0), bdc);
     const atf: Vec3 = add(mul(-1.0, dt0), bdc);
+    return .{ atn, atf };
+}
+
+pub fn intersectRayBoxDist(ray: Ray, box: Box) ?f32 {
+    const atn: Vec3, const atf: Vec3 = intersectRayBoxSlab(ray, box);
+    const tn: f32 = @max(atn[0], atn[1], atn[2]);
+    const tf: f32 = @min(atf[0], atf[1], atf[2]);
+    if (tn > tf or tf < 0.0) return null; // miss or box behind ray origin
+    if (tn > 0.0) return tn else return tf;
+}
+
+pub fn intersectRayBox(ray: Ray, box: Box) ?IntersectResult {
+    const atn: Vec3, const atf: Vec3 = intersectRayBoxSlab(ray, box);
     const tn: f32 = @max(atn[0], atn[1], atn[2]);
     const tf: f32 = @min(atf[0], atf[1], atf[2]);
     // miss or box behind ray origin
