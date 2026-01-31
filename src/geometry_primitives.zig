@@ -15,11 +15,6 @@ const step = math.step;
 const cross = math.cross;
 const normalize = math.normalize;
 
-// TODO: source attribution
-// TODO: only situationally compute the normal for box intersection
-// TODO: handle fp error (conservatively?)
-// TODO: thorough (non-marginal only?) testing
-
 pub const Ray = struct {
     o: Vec3,
     d: Vec3,
@@ -41,6 +36,9 @@ pub const IntersectResult = struct {
     dist: f32 = 0.0,
     norm: Vec3 = .{ 0.0, 0.0, 0.0 },
 };
+
+// Ray-Sphere intersection routine adapted from Inigo Quilez at:
+//   https://iquilezles.org/articles/intersectors/ and
 
 pub fn intersectRaySphere(ray: Ray, sphere: Sphere) ?IntersectResult {
     const roh: f32 = dot(ray.o, ray.d); // ray origin to half-chord dist
@@ -102,6 +100,9 @@ test "intersectRaySphere sphere behind ray origin" {
         try std.testing.expect(true);
     }
 }
+
+// Ray-Box intersection routine adapted from Inigo Quilez at:
+//   https://iquilezles.org/articles/intersectors/ and
 
 fn intersectRayBoxSlab(ray: Ray, box: Box) struct { Vec3, Vec3 } {
     const ird: Vec3 = div(1.0, ray.d); // invserse ray direction
@@ -183,6 +184,7 @@ test "intersectRayBox box behind ray origin" {
 //   https://www.shadertoy.com/view/MlGcDz
 // This variant saves computation relative to a vanilla application of Cramer's rule by
 // pre-computing some shared terms between determinants.
+
 pub fn intersectRayTriangle(ray: Ray, tri: Triangle) ?IntersectResult {
     const v0v1: Vec3 = sub(tri.vertices[1], tri.vertices[0]);
     const v0v2: Vec3 = sub(tri.vertices[2], tri.vertices[0]);
