@@ -62,7 +62,19 @@ pub const BVHStats = struct {
     tris_average: f32 = 0.0,
 };
 
-pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
+pub fn printBVHStats(stats: BVHStats) !void {
+    try stdout.print("  average depth:     {}\n", .{stats.depth_average});
+    try stdout.print("  min depth:         {}\n", .{stats.depth_min});
+    try stdout.print("  max depth:         {}\n", .{stats.depth_max});
+    try stdout.print("  total nodes:       {}\n", .{stats.nodes_total});
+    try stdout.print("  interior nodes:    {}\n", .{stats.nodes_interior});
+    try stdout.print("  leaf nodes:        {}\n", .{stats.nodes_leaf});
+    try stdout.print("  min triangles:     {}\n", .{stats.tris_min});
+    try stdout.print("  max triangles:     {}\n", .{stats.tris_max});
+    try stdout.print("  average triangles: {}\n", .{stats.tris_average});
+}
+
+pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
     const ntri: usize = mesh.ind.len / 3;
     std.debug.assert(mesh.ind.len % 3 == 0);
     std.debug.assert(ntri < std.math.maxInt(u32));
@@ -170,15 +182,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !void {
     stats.depth_average /= @as(f32, @floatFromInt(stats.nodes_leaf));
     stats.tris_average /= @as(f32, @floatFromInt(stats.nodes_leaf));
 
-    try stdout.print("average depth:     {}\n", .{stats.depth_average});
-    try stdout.print("min depth:         {}\n", .{stats.depth_min});
-    try stdout.print("max depth:         {}\n", .{stats.depth_max});
-    try stdout.print("total nodes:       {}\n", .{stats.nodes_total});
-    try stdout.print("interior nodes:    {}\n", .{stats.nodes_interior});
-    try stdout.print("leaf nodes:        {}\n", .{stats.nodes_leaf});
-    try stdout.print("min triangles:     {}\n", .{stats.tris_min});
-    try stdout.print("max triangles:     {}\n", .{stats.tris_max});
-    try stdout.print("average triangles: {}\n", .{stats.tris_average});
+    return stats;
 }
 
 pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
@@ -294,13 +298,13 @@ test "BVH --- builds" {
     mesh.vrt = &vertices;
     mesh.ind = &indices;
 
-    try buildBVH(&mesh, allocator);
+    _ = try buildBVH(&mesh, allocator);
 
     const ray: prim.Ray = .{ .o = .{ -2.0, 0.2, 0.2 }, .d = .{ 1.0, 0.0, 0.0 } };
     if (intersectRayMesh(ray, mesh)) |result| {
-        std.debug.print("{}\n", .{result.dist});
-        std.debug.print("{}\n", .{result.norm});
+        try std.testing.expectEqual(2, result.dist);
+        try std.testing.expectEqual(@as(m.Vec3, .{ -1.0, 0.0, 0.0 }), result.norm);
     } else {
-        std.debug.print("miss!\n", .{});
+        try std.testing.expect(false);
     }
 }

@@ -267,7 +267,13 @@ pub fn readInput(
                             switch (object.geom) {
                                 .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
                                 .box => |*value| value.*.size = try parseVec3(val),
-                                .mesh => |*value| value.* = try readASCIISTL(val, allocator),
+                                .mesh => |*value| value.* = blk: {
+                                    var mesh = try readASCIISTL(val, allocator);
+                                    const stats = try geom_mesh.buildBVH(&mesh, allocator);
+                                    try stdout.print("BVH Stats for {s}:\n", .{val});
+                                    try geom_mesh.printBVHStats(stats);
+                                    break :blk mesh;
+                                },
                             }
                         },
                         .rotate => {
@@ -325,7 +331,6 @@ pub fn readASCIISTL(
         if (std.mem.eql(u8, word, "endsolid")) {
             result.vrt = vrt.items;
             result.ind = ind.items;
-            try geom_mesh.buildBVH(&result, allocator);
             return result;
         }
         if (!std.mem.eql(u8, word, "facet")) return STLReadError.FormatError;
