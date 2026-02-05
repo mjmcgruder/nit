@@ -438,3 +438,38 @@ test "readInput --- runs" {
     try std.testing.expectEqual(scene[2].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[2].mtrl, geom.Material.diffuse);
 }
+
+pub fn fmtComma(value: anytype) CommaFormatter(@TypeOf(value)) {
+    const info = @typeInfo(@TypeOf(value));
+    if (info != .int and info != .comptime_int) {
+        @compileError("integer type required for comma formatting, got " ++ @typeName(@TypeOf(value)));
+    }
+
+    return .{ .value = value };
+}
+
+fn CommaFormatter(comptime T: type) type {
+    return struct {
+        value: T,
+
+        pub fn format(self: @This(), writer: *std.io.Writer) !void {
+            if (self.value == 0) { // this check is necessary due to exit condition of loop below
+                try writer.writeByte('0');
+                return;
+            }
+            if (self.value < 0) try writer.writeByte('-');
+            var val: u64 = @intCast(@abs(self.value));
+            var buf: [32]u8 = undefined; // note 10^20 > 2^64
+            var len: usize = 0;
+            while (val > 0) : (len += 1) {
+                buf[len] = @intCast(@mod(val, 10) + '0');
+                val = @divTrunc(val, 10);
+            }
+            var i: usize = 0;
+            while (i < len) : (i += 1) {
+                if (i > 0 and @mod(len - i, 3) == 0) try writer.writeByte(',');
+                try writer.writeByte(buf[len - 1 - i]);
+            }
+        }
+    };
+}

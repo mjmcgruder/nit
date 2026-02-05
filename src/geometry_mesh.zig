@@ -1,7 +1,13 @@
 const std = @import("std");
 
-const m = @import("math.zig");
+const io = @import("io.zig");
+const math = @import("math.zig");
 const prim = @import("geometry_primitives.zig");
+
+const add = math.add;
+const sub = math.sub;
+const mul = math.mul;
+const Vec3 = math.Vec3;
 
 var stdout_writer = std.fs.File.stdout().writer(&.{});
 var stderr_writer = std.fs.File.stderr().writer(&.{});
@@ -9,10 +15,12 @@ const stdout = &stdout_writer.interface;
 const stderr = &stderr_writer.interface;
 
 pub const Mesh = struct {
-    vrt: []m.Vec3 = &.{},
+    vrt: []Vec3 = &.{},
     ind: []u32 = &.{},
     bvh: BoundingVolumeHierarchy = .{},
 };
+
+const bvh_max_depth = 32; // BVH will admit 2^max_depth partitions
 
 pub const BoundingVolumeHierarchy = struct {
     pub const Node = struct {
@@ -25,12 +33,12 @@ pub const BoundingVolumeHierarchy = struct {
     indices: []u32 = &.{},
 };
 
-fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.Node) void {
-    var min: m.Vec3 = m.set3(std.math.floatMax(f32));
-    var max: m.Vec3 = m.set3(-std.math.floatMax(f32));
+fn findNodeBBOX(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.Node) void {
+    var min: Vec3 = math.set3(std.math.floatMax(f32));
+    var max: Vec3 = math.set3(-std.math.floatMax(f32));
 
     for (tri_indices) |tri_index| {
-        const vertices: [3]m.Vec3 = .{
+        const vertices: [3]Vec3 = .{
             mesh.vrt[mesh.ind[3 * tri_index + 0]],
             mesh.vrt[mesh.ind[3 * tri_index + 1]],
             mesh.vrt[mesh.ind[3 * tri_index + 2]],
@@ -43,8 +51,8 @@ fn setBoundingBox(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarch
         }
     }
 
-    const center: m.Vec3 = m.mul(m.add(max, min), 0.5);
-    const extent: m.Vec3 = m.mul(m.sub(max, min), 0.5);
+    const center: Vec3 = mul(add(max, min), 0.5);
+    const extent: Vec3 = mul(sub(max, min), 0.5);
 
     node.center = .{ center[0], center[1], center[2] };
     node.extent = .{ extent[0], extent[1], extent[2] };
@@ -63,15 +71,15 @@ pub const BVHStats = struct {
 };
 
 pub fn printBVHStats(stats: BVHStats) !void {
-    try stdout.print("  average depth:     {}\n", .{stats.depth_average});
+    try stdout.print("  average depth:     {d:.1}\n", .{stats.depth_average});
     try stdout.print("  min depth:         {}\n", .{stats.depth_min});
     try stdout.print("  max depth:         {}\n", .{stats.depth_max});
-    try stdout.print("  total nodes:       {}\n", .{stats.nodes_total});
-    try stdout.print("  interior nodes:    {}\n", .{stats.nodes_interior});
-    try stdout.print("  leaf nodes:        {}\n", .{stats.nodes_leaf});
-    try stdout.print("  min triangles:     {}\n", .{stats.tris_min});
-    try stdout.print("  max triangles:     {}\n", .{stats.tris_max});
-    try stdout.print("  average triangles: {}\n", .{stats.tris_average});
+    try stdout.print("  total nodes:       {f}\n", .{io.fmtComma(stats.nodes_total)});
+    try stdout.print("  interior nodes:    {f}\n", .{io.fmtComma(stats.nodes_interior)});
+    try stdout.print("  leaf nodes:        {f}\n", .{io.fmtComma(stats.nodes_leaf)});
+    try stdout.print("  min triangles:     {f}\n", .{io.fmtComma(stats.tris_min)});
+    try stdout.print("  max triangles:     {f}\n", .{io.fmtComma(stats.tris_max)});
+    try stdout.print("  average triangles: {d:.2}\n", .{stats.tris_average});
 }
 
 pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
@@ -81,21 +89,21 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
 
     var stats: BVHStats = .{};
 
-    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, 2 * (2 * ntri - 1));
+    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, 2 * ntri - 1);
     mesh.bvh.indices = try allocator.alloc(u32, ntri);
     for (0..ntri) |ti| {
         mesh.bvh.indices[ti] = @intCast(ti);
     }
 
-    var centroids: []m.Vec3 = try allocator.alloc(m.Vec3, ntri);
+    var centroids: []Vec3 = try allocator.alloc(Vec3, ntri);
     for (0..ntri) |ti| {
-        const v0: m.Vec3 = mesh.vrt[mesh.ind[ti * 3 + 0]];
-        const v1: m.Vec3 = mesh.vrt[mesh.ind[ti * 3 + 1]];
-        const v2: m.Vec3 = mesh.vrt[mesh.ind[ti * 3 + 2]];
-        centroids[ti] = m.mul(m.add(m.add(v0, v1), v2), 1.0 / 3.0);
+        const v0: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 0]];
+        const v1: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 1]];
+        const v2: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 2]];
+        centroids[ti] = mul(add(add(v0, v1), v2), 1.0 / 3.0);
     }
 
-    setBoundingBox(mesh, mesh.bvh.indices, &mesh.bvh.nodes[0]);
+    findNodeBBOX(mesh, mesh.bvh.indices, &mesh.bvh.nodes[0]);
     mesh.bvh.nodes[0].count = @intCast(ntri);
     mesh.bvh.nodes[0].offset = 0;
 
@@ -104,18 +112,19 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
         depth: u32,
     };
 
-    const max_depth: usize = 1 << 5;
-    var node_stack: [max_depth]BVHBuildNode = undefined;
+    var node_stack: [bvh_max_depth + 1]BVHBuildNode = undefined;
     node_stack[0] = .{ .index = 0, .depth = 0 };
     var node_stack_head: u32 = 1;
 
     var next_node: u32 = 1;
     while (node_stack_head > 0) {
+        std.debug.assert(node_stack_head - 1 <= bvh_max_depth);
+
         const stack_node: BVHBuildNode = node_stack[node_stack_head - 1];
         const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.index];
         node_stack_head -= 1;
 
-        defer {
+        defer { // each iteration "retires" one node, it is logged here
             if (node.count == 0) {
                 stats.nodes_interior += 1;
             } else {
@@ -129,7 +138,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             }
         }
 
-        if (node.count <= 1 or (stack_node.depth + 1 >= max_depth)) continue;
+        if ((node.count <= 1) or (stack_node.depth + 1 > bvh_max_depth)) continue;
 
         var split_dim: usize = 0;
         {
@@ -162,14 +171,16 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             node.count = 0; // set interior
             node.offset = next_node;
 
-            setBoundingBox(mesh, mesh.bvh.indices[min..lo_max], &mesh.bvh.nodes[next_node]);
+            findNodeBBOX(mesh, mesh.bvh.indices[min..lo_max], &mesh.bvh.nodes[next_node]);
+            std.debug.assert(next_node < mesh.bvh.nodes.len);
             mesh.bvh.nodes[next_node].count = lo_max - min;
             mesh.bvh.nodes[next_node].offset = min;
             node_stack[node_stack_head] = .{ .index = next_node, .depth = stack_node.depth + 1 };
             node_stack_head += 1;
             next_node += 1;
 
-            setBoundingBox(mesh, mesh.bvh.indices[hi_min..max], &mesh.bvh.nodes[next_node]);
+            findNodeBBOX(mesh, mesh.bvh.indices[hi_min..max], &mesh.bvh.nodes[next_node]);
+            std.debug.assert(next_node < mesh.bvh.nodes.len);
             mesh.bvh.nodes[next_node].count = max - hi_min;
             mesh.bvh.nodes[next_node].offset = hi_min;
             node_stack[node_stack_head] = .{ .index = next_node, .depth = stack_node.depth + 1 };
@@ -193,12 +204,12 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
         dist: f32,
     };
 
-    var traversal_stack: [1 << 7]RayMeshStackNode = undefined; // TODO: set max depth properly
+    var traversal_stack: [bvh_max_depth + 1]RayMeshStackNode = undefined;
 
-    const root_center: m.Vec3 = m.makeVec3(mesh.bvh.nodes[0].center);
-    const root_extent: m.Vec3 = m.makeVec3(mesh.bvh.nodes[0].extent);
+    const root_center: Vec3 = math.makeVec3(mesh.bvh.nodes[0].center);
+    const root_extent: Vec3 = math.makeVec3(mesh.bvh.nodes[0].extent);
     if (prim.intersectRayBoxDist(
-        .{ .d = ray.d, .o = m.sub(ray.o, root_center) },
+        .{ .d = ray.d, .o = sub(ray.o, root_center) },
         .{ .size = root_extent },
     )) |root_dist| {
         traversal_stack[0].indx = 0;
@@ -209,23 +220,25 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
     var traversal_stack_head: usize = 1;
 
     while (traversal_stack_head > 0) {
-        const node_stack: RayMeshStackNode = traversal_stack[traversal_stack_head - 1];
-        traversal_stack_head -= 1;
-        const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node_stack.indx];
+        std.debug.assert(traversal_stack_head - 1 <= bvh_max_depth);
 
-        if (result.dist <= node_stack.dist) continue;
+        const stack_node: RayMeshStackNode = traversal_stack[traversal_stack_head - 1];
+        traversal_stack_head -= 1;
+        const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.indx];
+
+        if (result.dist <= stack_node.dist) continue;
 
         if (node.count == 0) {
             const child0: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset];
             const child1: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset + 1];
 
             const dist0: f32 = prim.intersectRayBoxDist(
-                .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child0.center)) },
-                .{ .size = m.makeVec3(child0.extent) },
+                .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child0.center)) },
+                .{ .size = math.makeVec3(child0.extent) },
             ) orelse std.math.floatMax(f32);
             const dist1: f32 = prim.intersectRayBoxDist(
-                .{ .d = ray.d, .o = m.sub(ray.o, m.makeVec3(child1.center)) },
-                .{ .size = m.makeVec3(child1.extent) },
+                .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child1.center)) },
+                .{ .size = math.makeVec3(child1.extent) },
             ) orelse std.math.floatMax(f32);
 
             var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = dist0 };
@@ -269,7 +282,7 @@ test "BVH --- builds" {
     defer arena.deinit();
     const allocator: std.mem.Allocator = arena.allocator();
 
-    var vertices = [_]m.Vec3{
+    var vertices = [_]Vec3{
         .{ 0.0, 0.0, 0.0 },
         .{ 1.0, 0.0, 0.0 },
         .{ 1.0, 1.0, 0.0 },
@@ -303,7 +316,7 @@ test "BVH --- builds" {
     const ray: prim.Ray = .{ .o = .{ -2.0, 0.2, 0.2 }, .d = .{ 1.0, 0.0, 0.0 } };
     if (intersectRayMesh(ray, mesh)) |result| {
         try std.testing.expectEqual(2, result.dist);
-        try std.testing.expectEqual(@as(m.Vec3, .{ -1.0, 0.0, 0.0 }), result.norm);
+        try std.testing.expectEqual(@as(Vec3, .{ -1.0, 0.0, 0.0 }), result.norm);
     } else {
         try std.testing.expect(false);
     }
