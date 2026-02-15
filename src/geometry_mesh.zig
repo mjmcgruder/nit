@@ -96,6 +96,8 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
     }
 
     var centroids: []Vec3 = try allocator.alloc(Vec3, ntri);
+    defer allocator.free(centroids);
+
     for (0..ntri) |ti| {
         const v0: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 0]];
         const v1: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 1]];
