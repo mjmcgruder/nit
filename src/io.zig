@@ -183,6 +183,8 @@ pub fn readInput(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
 ) !struct { settings: Settings, scene: std.ArrayList(geom.Object) } {
+    try stdout.print("reading input file \"{s}\"...\n", .{rel_path});
+
     var settings: Settings = .{};
     var scene: std.ArrayList(geom.Object) = .empty;
 
@@ -269,6 +271,7 @@ pub fn readInput(
                                 .box => |*value| value.*.size = try parseVec3(val),
                                 .mesh => |*value| value.* = blk: {
                                     var mesh = try readASCIISTL(val, allocator);
+                                    try stdout.print("building BVH for \"{s}\"...\n", .{val});
                                     const stats = try geom_mesh.buildBVH(&mesh, allocator);
                                     try stdout.print("BVH Stats for {s}:\n", .{val});
                                     try geom_mesh.printBVHStats(stats);
@@ -307,68 +310,71 @@ pub fn readASCIISTL(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
 ) !geom_mesh.Mesh {
-    var result: geom_mesh.Mesh = .{};
-    var vrt: std.ArrayList(m.Vec3) = .empty;
-    var ind: std.ArrayList(u32) = .empty;
+    const white: []const u8 = " \t\r\n";
 
-    const fID: std.fs.File = try std.fs.cwd().openFile(rel_path, .{});
-    defer fID.close();
+    try stdout.print("reading ASCII STL file \"{s}\"...\n", .{rel_path});
 
-    var read_buffer: [1 << 12]u8 = undefined;
-    var file_reader = fID.reader(&read_buffer);
-    const reader = &file_reader.interface;
+    const file_data = try std.fs.cwd().readFileAlloc(std.heap.page_allocator, rel_path, 1 << 30);
+    defer std.heap.page_allocator.free(file_data);
 
-    var trim: []u8 = undefined;
-    var word: []u8 = undefined;
+    const num_facets = std.mem.count(u8, file_data, "endfacet");
+    const vrt = try allocator.alloc(m.Vec3, num_facets * 3);
+    const ind = try allocator.alloc(u32, num_facets * 3);
 
-    trim = try reader.takeDelimiterInclusive('\n');
-    trim = getNextWord(trim, &word);
-    if (!std.mem.eql(u8, word, "solid")) return STLReadError.FormatError;
+    var lines = std.mem.splitScalar(u8, file_data, '\n');
 
-    for (0..(1 << 27)) |_| {
-        trim = try reader.takeDelimiterInclusive('\n');
-        trim = getNextWord(trim, &word);
-        if (std.mem.eql(u8, word, "endsolid")) {
-            result.vrt = vrt.items;
-            result.ind = ind.items;
-            return result;
+    if (lines.next()) |first_line| {
+        var tok = std.mem.tokenizeAny(u8, first_line, white);
+        if (tok.next()) |kw| {
+            if (!std.mem.eql(u8, kw, "solid")) return STLReadError.FormatError;
+        } else return STLReadError.FormatError;
+    } else return STLReadError.FormatError;
+
+    var vi: usize = 0;
+    while (lines.next()) |line| {
+        var tok = std.mem.tokenizeAny(u8, line, white);
+
+        const keyword = tok.next() orelse continue;
+
+        if (std.mem.eql(u8, keyword, "endsolid")) {
+            return .{ .vrt = vrt, .ind = ind };
         }
-        if (!std.mem.eql(u8, word, "facet")) return STLReadError.FormatError;
-        trim = getNextWord(trim, &word);
-        if (!std.mem.eql(u8, word, "normal")) return STLReadError.FormatError;
 
-        trim = try reader.takeDelimiterInclusive('\n');
-        trim = getNextWord(trim, &word);
-        if (!std.mem.eql(u8, word, "outer")) return STLReadError.FormatError;
-        trim = getNextWord(trim, &word);
-        if (!std.mem.eql(u8, word, "loop")) return STLReadError.FormatError;
+        if (!std.mem.eql(u8, keyword, "facet")) return STLReadError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "normal"))
+            return STLReadError.FormatError;
+
+        tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "outer"))
+            return STLReadError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "loop"))
+            return STLReadError.FormatError;
 
         for (0..3) |_| {
-            trim = try reader.takeDelimiterInclusive('\n');
-            trim = getNextWord(trim, &word);
-            if (!std.mem.eql(u8, word, "vertex")) return STLReadError.FormatError;
+            tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+            if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "vertex"))
+                return STLReadError.FormatError;
+
             var vertex: m.Vec3 = .{ 0.0, 0.0, 0.0 };
             for (0..3) |i| {
-                trim = getNextWord(trim, &word);
-                vertex[i] = try std.fmt.parseFloat(f32, word);
+                vertex[i] = try std.fmt.parseFloat(f32, tok.next() orelse return STLReadError.FormatError);
             }
-            try vrt.append(allocator, vertex);
-            try ind.append(allocator, @as(u32, @intCast(ind.items.len))); // TODO: fails if too many indices
+            vrt[vi] = vertex;
+            ind[vi] = @intCast(vi);
+            vi += 1;
         }
 
-        trim = try reader.takeDelimiterInclusive('\n');
-        trim = getNextWord(trim, &word);
-        if (!std.mem.eql(u8, word, "endloop")) return STLReadError.FormatError;
+        tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "endloop"))
+            return STLReadError.FormatError;
 
-        trim = try reader.takeDelimiterInclusive('\n');
-        trim = getNextWord(trim, &word);
-        if (!std.mem.eql(u8, word, "endfacet")) return STLReadError.FormatError;
+        tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "endfacet"))
+            return STLReadError.FormatError;
     }
 
-    return STLReadError.FacetLimitExceeded;
+    return STLReadError.FormatError; // file ended without "endsolid"
 }
-
-// TESTS -----
 
 test "readInput --- runs" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
