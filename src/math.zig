@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Vec3 = @Vector(3, f32);
+pub const Vec3 = @Vector(3, f32); // note this structure is probably 16 bytes
 pub const Vec4 = @Vector(4, f32);
 pub const Mat4 = [4]@Vector(4, f32);
 

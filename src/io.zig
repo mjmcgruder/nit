@@ -314,7 +314,7 @@ pub fn readASCIISTL(
 
     try stdout.print("reading ASCII STL file \"{s}\"...\n", .{rel_path});
 
-    const file_data = try std.fs.cwd().readFileAlloc(std.heap.page_allocator, rel_path, 1 << 30);
+    const file_data = try std.fs.cwd().readFileAlloc(std.heap.page_allocator, rel_path, 1 << 33);
     defer std.heap.page_allocator.free(file_data);
 
     const num_facets = std.mem.count(u8, file_data, "endfacet");

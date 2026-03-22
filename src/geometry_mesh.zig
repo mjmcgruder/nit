@@ -58,46 +58,21 @@ fn findNodeBBOX(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.
     node.extent = .{ extent[0], extent[1], extent[2] };
 }
 
-pub const BVHStats = struct {
-    depth_min: u32 = std.math.maxInt(u32),
-    depth_max: u32 = 0,
-    depth_average: f32 = 0.0,
-    nodes_total: u32 = 0,
-    nodes_interior: u32 = 0,
-    nodes_leaf: u32 = 0,
-    tris_min: u32 = std.math.maxInt(u32),
-    tris_max: u32 = 0,
-    tris_average: f32 = 0.0,
-};
-
-pub fn printBVHStats(stats: BVHStats) !void {
-    try stdout.print("  average depth:     {d:.1}\n", .{stats.depth_average});
-    try stdout.print("  min depth:         {}\n", .{stats.depth_min});
-    try stdout.print("  max depth:         {}\n", .{stats.depth_max});
-    try stdout.print("  total nodes:       {f}\n", .{io.fmtComma(stats.nodes_total)});
-    try stdout.print("  interior nodes:    {f}\n", .{io.fmtComma(stats.nodes_interior)});
-    try stdout.print("  leaf nodes:        {f}\n", .{io.fmtComma(stats.nodes_leaf)});
-    try stdout.print("  min triangles:     {f}\n", .{io.fmtComma(stats.tris_min)});
-    try stdout.print("  max triangles:     {f}\n", .{io.fmtComma(stats.tris_max)});
-    try stdout.print("  average triangles: {d:.2}\n", .{stats.tris_average});
-}
-
 pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
     const ntri: usize = mesh.ind.len / 3;
+    const max_nodes: usize = 2 * ntri - 1;
     std.debug.assert(mesh.ind.len % 3 == 0);
-    std.debug.assert(ntri < std.math.maxInt(u32));
+    std.debug.assert(max_nodes < std.math.maxInt(u32)); // note this ensures ntri is also in bounds
 
     var stats: BVHStats = .{};
+    stats.mesh_ntri = ntri;
 
-    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, 2 * ntri - 1);
+    mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, max_nodes);
     mesh.bvh.indices = try allocator.alloc(u32, ntri);
-    for (0..ntri) |ti| {
-        mesh.bvh.indices[ti] = @intCast(ti);
-    }
+    for (0..ntri) |ti| mesh.bvh.indices[ti] = @intCast(ti);
 
     var centroids: []Vec3 = try allocator.alloc(Vec3, ntri);
     defer allocator.free(centroids);
-
     for (0..ntri) |ti| {
         const v0: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 0]];
         const v1: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 1]];
@@ -110,12 +85,12 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
     mesh.bvh.nodes[0].offset = 0;
 
     const BVHBuildNode = struct {
-        index: u32,
+        node_index: u32,
         depth: u32,
     };
 
     var node_stack: [bvh_max_depth + 1]BVHBuildNode = undefined;
-    node_stack[0] = .{ .index = 0, .depth = 0 };
+    node_stack[0] = .{ .node_index = 0, .depth = 0 };
     var node_stack_head: u32 = 1;
 
     var next_node: u32 = 1;
@@ -123,7 +98,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
         std.debug.assert(node_stack_head - 1 <= bvh_max_depth);
 
         const stack_node: BVHBuildNode = node_stack[node_stack_head - 1];
-        const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.index];
+        const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.node_index];
         node_stack_head -= 1;
 
         defer { // each iteration "retires" one node, it is logged here
@@ -140,18 +115,19 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             }
         }
 
-        if ((node.count <= 1) or (stack_node.depth + 1 > bvh_max_depth)) continue;
+        if ((node.count <= 4) or (stack_node.depth + 1 > bvh_max_depth)) continue;
 
-        var split_dim: usize = 0;
-        {
+        const split_dim: usize = blk: {
             var max_extent: f32 = -std.math.floatMax(f32);
+            var max_dim: usize = 0;
             for (0..3) |dim| {
                 if (node.extent[dim] > max_extent) {
                     max_extent = node.extent[dim];
-                    split_dim = dim;
+                    max_dim = dim;
                 }
             }
-        }
+            break :blk max_dim;
+        };
 
         const min: u32 = node.offset;
         const max: u32 = node.offset + node.count;
@@ -166,6 +142,9 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
                 lo_max += 1;
             }
         }
+        std.debug.assert(lo_max == hi_min);
+        // Note that lo_max should always be equal to hi_min at this point. So the area above really
+        // returns a "split coorindate" and the list section sorted at the boundary.
 
         // NOTE: We must always ensure each newly created leaf has at least one triangle, otherwise
         // the node structure doesn't work since we assume all interior nodes have count 0.
@@ -177,7 +156,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             std.debug.assert(next_node < mesh.bvh.nodes.len);
             mesh.bvh.nodes[next_node].count = lo_max - min;
             mesh.bvh.nodes[next_node].offset = min;
-            node_stack[node_stack_head] = .{ .index = next_node, .depth = stack_node.depth + 1 };
+            node_stack[node_stack_head] = .{ .node_index = next_node, .depth = stack_node.depth + 1 };
             node_stack_head += 1;
             next_node += 1;
 
@@ -185,7 +164,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             std.debug.assert(next_node < mesh.bvh.nodes.len);
             mesh.bvh.nodes[next_node].count = max - hi_min;
             mesh.bvh.nodes[next_node].offset = hi_min;
-            node_stack[node_stack_head] = .{ .index = next_node, .depth = stack_node.depth + 1 };
+            node_stack[node_stack_head] = .{ .node_index = next_node, .depth = stack_node.depth + 1 };
             node_stack_head += 1;
             next_node += 1;
         }
@@ -277,6 +256,32 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
     }
 
     return if (result.dist == std.math.floatMax(f32)) null else result;
+}
+
+pub const BVHStats = struct {
+    mesh_ntri: usize = 0,
+    depth_min: u32 = std.math.maxInt(u32),
+    depth_max: u32 = 0,
+    depth_average: f32 = 0.0,
+    nodes_total: u32 = 0,
+    nodes_interior: u32 = 0,
+    nodes_leaf: u32 = 0,
+    tris_min: u32 = std.math.maxInt(u32),
+    tris_max: u32 = 0,
+    tris_average: f32 = 0.0,
+};
+
+pub fn printBVHStats(stats: BVHStats) !void {
+    try stdout.print("  mesh triangles:    {f}\n", .{io.fmtComma(stats.mesh_ntri)});
+    try stdout.print("  average depth:     {d:.1}\n", .{stats.depth_average});
+    try stdout.print("  min depth:         {}\n", .{stats.depth_min});
+    try stdout.print("  max depth:         {}\n", .{stats.depth_max});
+    try stdout.print("  total nodes:       {f}\n", .{io.fmtComma(stats.nodes_total)});
+    try stdout.print("  interior nodes:    {f}\n", .{io.fmtComma(stats.nodes_interior)});
+    try stdout.print("  leaf nodes:        {f}\n", .{io.fmtComma(stats.nodes_leaf)});
+    try stdout.print("  min triangles:     {f}\n", .{io.fmtComma(stats.tris_min)});
+    try stdout.print("  max triangles:     {f}\n", .{io.fmtComma(stats.tris_max)});
+    try stdout.print("  average triangles: {d:.2}\n", .{stats.tris_average});
 }
 
 test "BVH --- builds" {
