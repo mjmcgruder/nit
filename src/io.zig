@@ -306,33 +306,48 @@ const STLReadError = error{ // TODO: possibly generalize this
     FacetLimitExceeded,
 };
 
+fn nextLine(r: *std.Io.Reader) ![]u8 {
+    return try r.takeDelimiter('\n') orelse ParsingError.FormatError;
+}
+
 pub fn readASCIISTL(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
 ) !geom_mesh.Mesh {
-    const white: []const u8 = " \t\r\n";
+    const whitespace: []const u8 = " \t\r\n";
 
     try stdout.print("reading ASCII STL file \"{s}\"...\n", .{rel_path});
 
-    const file_data = try std.fs.cwd().readFileAlloc(std.heap.page_allocator, rel_path, 1 << 33);
-    defer std.heap.page_allocator.free(file_data);
+    var read_buffer: [1 << 18]u8 = undefined;
+    const file = try std.fs.cwd().openFile(rel_path, .{});
+    defer file.close();
+    var file_reader = file.reader(&read_buffer);
+    const reader = &file_reader.interface;
 
-    const num_facets = std.mem.count(u8, file_data, "endfacet");
+    const num_facets: usize = blk: {
+        var nfacets: usize = 0;
+        while (try reader.takeDelimiter('\n')) |line| {
+            var tok = std.mem.tokenizeAny(u8, line, whitespace);
+            if (tok.next()) |kw| {
+                if (std.mem.eql(u8, kw, "endfacet")) nfacets += 1;
+            }
+        }
+        break :blk nfacets;
+    };
+
     const vrt = try allocator.alloc(m.Vec3, num_facets * 3);
     const ind = try allocator.alloc(u32, num_facets * 3);
 
-    var lines = std.mem.splitScalar(u8, file_data, '\n');
+    try file_reader.seekTo(0);
 
-    if (lines.next()) |first_line| {
-        var tok = std.mem.tokenizeAny(u8, first_line, white);
-        if (tok.next()) |kw| {
-            if (!std.mem.eql(u8, kw, "solid")) return STLReadError.FormatError;
-        } else return STLReadError.FormatError;
-    } else return STLReadError.FormatError;
+    const first_line = try nextLine(reader);
+    var tok = std.mem.tokenizeAny(u8, first_line, whitespace);
+    if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "solid"))
+        return STLReadError.FormatError;
 
     var vi: usize = 0;
-    while (lines.next()) |line| {
-        var tok = std.mem.tokenizeAny(u8, line, white);
+    while (try reader.takeDelimiter('\n')) |line| {
+        tok = std.mem.tokenizeAny(u8, line, whitespace);
 
         const keyword = tok.next() orelse continue;
 
@@ -344,14 +359,14 @@ pub fn readASCIISTL(
         if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "normal"))
             return STLReadError.FormatError;
 
-        tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+        tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
         if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "outer"))
             return STLReadError.FormatError;
         if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "loop"))
             return STLReadError.FormatError;
 
         for (0..3) |_| {
-            tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+            tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
             if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "vertex"))
                 return STLReadError.FormatError;
 
@@ -364,11 +379,11 @@ pub fn readASCIISTL(
             vi += 1;
         }
 
-        tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+        tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
         if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "endloop"))
             return STLReadError.FormatError;
 
-        tok = std.mem.tokenizeAny(u8, lines.next() orelse return STLReadError.FormatError, white);
+        tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
         if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "endfacet"))
             return STLReadError.FormatError;
     }
