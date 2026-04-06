@@ -258,6 +258,25 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
     return if (result.dist == std.math.floatMax(f32)) null else result;
 }
 
+pub fn remapMesh(mesh: *Mesh) void {
+    var traversal_stack: [bvh_max_depth + 1]u32 = undefined;
+    traversal_stack[0] = 0;
+    var traversal_stack_head: usize = 1;
+    while (traversal_stack_head > 0) {
+        const node: BoundingVolumeHierarchy.Node =
+            mesh.bvh.nodes[traversal_stack[traversal_stack_head - 1]];
+        traversal_stack_head -= 1;
+        if (node.count == 0) {
+            traversal_stack[traversal_stack_head] = node.offset;
+            traversal_stack_head += 1;
+            traversal_stack[traversal_stack_head] = node.offset + 1;
+            traversal_stack_head += 1;
+        } else {
+            // TODO: build permutation tables here
+        }
+    }
+}
+
 pub const BVHStats = struct {
     mesh_ntri: usize = 0,
     depth_min: u32 = std.math.maxInt(u32),
