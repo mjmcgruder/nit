@@ -4,11 +4,6 @@ const m = @import("math.zig");
 const geom = @import("geometry.zig");
 const geom_mesh = @import("geometry_mesh.zig");
 
-var stdout_writer = std.fs.File.stdout().writer(&.{});
-var stderr_writer = std.fs.File.stderr().writer(&.{});
-const stdout = &stdout_writer.interface;
-const stderr = &stderr_writer.interface;
-
 pub const Settings = struct {
     thread_count: usize = 8,
     num_samples: usize = 1 << 0,
@@ -26,12 +21,12 @@ pub const Pixel = struct {
     b: u8 = 0,
 };
 
-pub fn writeImage(frame_buffer: []const Pixel, settings: Settings, file_name: []const u8) !void {
-    const file: std.fs.File = try std.fs.cwd().createFile(file_name, .{});
-    defer file.close();
+pub fn writeImage(io: std.Io, frame_buffer: []const Pixel, settings: Settings, file_name: []const u8) !void {
+    const file: std.Io.File = try std.Io.Dir.cwd().createFile(io, file_name, .{});
+    defer file.close(io);
 
     var write_buffer: [1 << 12]u8 = undefined;
-    var file_writer = file.writer(&write_buffer);
+    var file_writer = file.writer(io, &write_buffer);
     const writer = &file_writer.interface;
 
     try writer.print("P3\n", .{});
@@ -182,6 +177,8 @@ const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).i
 pub fn readInput(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
+    io: std.Io,
+    stdout: *std.Io.Writer,
 ) !struct { settings: Settings, scene: std.ArrayList(geom.Object) } {
     try stdout.print("reading input file \"{s}\"...\n", .{rel_path});
 
@@ -190,11 +187,11 @@ pub fn readInput(
 
     var mode: InputParseMode = .normal;
 
-    const fID: std.fs.File = try std.fs.cwd().openFile(rel_path, .{});
-    defer fID.close();
+    const fID: std.Io.File = try std.Io.Dir.cwd().openFile(io, rel_path, .{});
+    defer fID.close(io);
 
     var read_buffer: [1 << 12]u8 = undefined;
-    var file_reader = fID.reader(&read_buffer);
+    var file_reader = fID.reader(io, &read_buffer);
     const reader = &file_reader.interface;
 
     var line_num: usize = 1;
@@ -202,7 +199,7 @@ pub fn readInput(
     var word: []u8 = &.{};
 
     line_loop: while (reader.takeDelimiterInclusive('\n')) |line| : (line_num += 1) {
-        errdefer stderr.print("parsing error at line {}\n", .{line_num}) catch unreachable;
+        errdefer std.log.err("parsing error at line {}", .{line_num});
 
         trim = skipWhiteSpace(line);
 
@@ -270,11 +267,11 @@ pub fn readInput(
                                 .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
                                 .box => |*value| value.*.size = try parseVec3(val),
                                 .mesh => |*value| value.* = blk: {
-                                    var mesh = try readASCIISTL(val, allocator);
+                                    var mesh = try readASCIISTL(val, allocator, io, stdout);
                                     try stdout.print("building BVH for \"{s}\"...\n", .{val});
                                     const stats = try geom_mesh.buildBVH(&mesh, allocator);
                                     try stdout.print("BVH Stats for {s}:\n", .{val});
-                                    try geom_mesh.printBVHStats(stats);
+                                    try geom_mesh.printBVHStats(stats, io);
                                     break :blk mesh;
                                 },
                             }
@@ -313,15 +310,17 @@ fn nextLine(r: *std.Io.Reader) ![]u8 {
 pub fn readASCIISTL(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
+    io: std.Io,
+    stdout: *std.Io.Writer,
 ) !geom_mesh.Mesh {
     const whitespace: []const u8 = " \t\r\n";
 
     try stdout.print("reading ASCII STL file \"{s}\"...\n", .{rel_path});
 
     var read_buffer: [1 << 18]u8 = undefined;
-    const file = try std.fs.cwd().openFile(rel_path, .{});
-    defer file.close();
-    var file_reader = file.reader(&read_buffer);
+    const file = try std.Io.Dir.cwd().openFile(io, rel_path, .{});
+    defer file.close(io);
+    var file_reader = file.reader(io, &read_buffer);
     const reader = &file_reader.interface;
 
     const num_facets: usize = blk: {
@@ -371,7 +370,7 @@ pub fn readASCIISTL(
                 return STLReadError.FormatError;
 
             var vertex: m.Vec3 = .{ 0.0, 0.0, 0.0 };
-            for (0..3) |i| {
+            inline for (0..3) |i| {
                 vertex[i] = try std.fmt.parseFloat(f32, tok.next() orelse return STLReadError.FormatError);
             }
             vrt[vi] = vertex;
@@ -392,10 +391,11 @@ pub fn readASCIISTL(
 }
 
 test "readInput --- runs" {
+    const io = std.testing.io;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: std.mem.Allocator = arena.allocator();
-    const input = try readInput("src/test_data/input.txt", allocator);
+    const input = try readInput(io, "src/test_data/input.txt", allocator);
 
     const settings = input.settings;
     try std.testing.expectEqual(settings.thread_count, 8);
@@ -473,7 +473,7 @@ fn CommaFormatter(comptime T: type) type {
     return struct {
         value: T,
 
-        pub fn format(self: @This(), writer: *std.io.Writer) !void {
+        pub fn format(self: @This(), writer: *std.Io.Writer) !void {
             if (self.value == 0) { // this check is necessary due to exit condition of loop below
                 try writer.writeByte('0');
                 return;

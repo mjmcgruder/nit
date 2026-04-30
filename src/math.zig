@@ -26,7 +26,7 @@ pub fn toHomogeneousDir(src: Vec3) Vec4 {
 
 pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
     var res: Vec4 = undefined;
-    for (0..4) |r| {
+    inline for (0..4) |r| {
         res[r] = @reduce(.Add, mat[r] * vec);
     }
     return res;
@@ -34,9 +34,9 @@ pub fn matvec4(mat: Mat4, vec: Vec4) Vec4 {
 
 pub fn matmul4(a: Mat4, b: Mat4) Mat4 {
     var res: Mat4 = undefined;
-    for (0..4) |c| {
+    inline for (0..4) |c| {
         const col: Vec4 = .{ b[0][c], b[1][c], b[2][c], b[3][c] };
-        for (0..4) |r| {
+        inline for (0..4) |r| {
             res[r][c] = @reduce(.Add, a[r] * col);
         }
     }
@@ -168,7 +168,7 @@ pub inline fn div(a: anytype, b: anytype) Vec3 {
     const av: @Vector(3, f32) = getVector(a);
     const bv: @Vector(3, f32) = getVector(b);
     var dv: @Vector(3, f32) = undefined;
-    for (0..3) |i| {
+    inline for (0..3) |i| {
         dv[i] = sdiv(av[i], bv[i]);
     }
     return dv;
@@ -178,7 +178,7 @@ pub inline fn step(edge: anytype, x: anytype) Vec3 {
     const ev: @Vector(3, f32) = getVector(edge);
     const xv: @Vector(3, f32) = getVector(x);
     var result: Vec3 = undefined;
-    for (0..3) |i| {
+    inline for (0..3) |i| {
         result[i] = if (xv[i] < ev[i]) 0.0 else 1.0;
     }
     return result;
@@ -186,7 +186,7 @@ pub inline fn step(edge: anytype, x: anytype) Vec3 {
 
 pub inline fn sign(x: Vec3) Vec3 {
     var result: Vec3 = undefined;
-    for (0..3) |i| {
+    inline for (0..3) |i| {
         result[i] = if (x[i] < 0.0) -1.0 else 1.0;
     }
     return result;
@@ -437,8 +437,8 @@ test "sincos_approx --- sin cos quadrant 3" {
 
 test "Mat4 --- identity" {
     const mat: Mat4 = identity();
-    for (0..4) |r| {
-        for (0..4) |c| {
+    inline for (0..4) |r| {
+        inline for (0..4) |c| {
             if (r == c) {
                 try std.testing.expectEqual(1.0, mat[r][c]);
             } else {
@@ -459,7 +459,7 @@ test "matvec4 --- identity" {
 
     const vec_new: Vec4 = matvec4(mat, vec);
 
-    for (0..4) |i| {
+    inline for (0..4) |i| {
         try std.testing.expectEqual(vec[i], vec_new[i]);
     }
 }
@@ -491,8 +491,8 @@ test "mattnp4 --- integer matrix" {
 
     const tnp: Mat4 = mattnp4(mat);
 
-    for (0..4) |r| {
-        for (0..4) |c| {
+    inline for (0..4) |r| {
+        inline for (0..4) |c| {
             try std.testing.expectEqual(mat[c][r], tnp[r][c]);
         }
     }
@@ -510,8 +510,8 @@ test "matvec4 --- orthonormal, transpose, identity" {
 
     const test_identity: Mat4 = matmul4(mat, inv);
 
-    for (0..4) |r| {
-        for (0..4) |c| {
+    inline for (0..4) |r| {
+        inline for (0..4) |c| {
             if (r == c) {
                 try std.testing.expectApproxEqAbs(1.0, test_identity[r][c], eps);
             } else {
@@ -533,8 +533,8 @@ test "invertTransform --- recovers identity" {
 
     const test_identity: Mat4 = matmul4(mat, inv);
 
-    for (0..4) |r| {
-        for (0..4) |c| {
+    inline for (0..4) |r| {
+        inline for (0..4) |c| {
             if (r == c) {
                 try std.testing.expectApproxEqAbs(1.0, test_identity[r][c], eps);
             } else {

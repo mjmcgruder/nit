@@ -12,19 +12,14 @@ test {
     _ = geom;
 }
 
-var stdout_writer = std.fs.File.stdout().writer(&.{});
-var stderr_writer = std.fs.File.stderr().writer(&.{});
-const stdout = &stdout_writer.interface;
-const stderr = &stderr_writer.interface;
-
-var render_timer: std.time.Timer = undefined;
+var render_start: std.Io.Clock.Timestamp = undefined;
 const chunk_size: usize = 1 << 11;
 
-var last_print_time: u64 = undefined;
-var last_print_mutex = std.Thread.Mutex{};
+var last_print_time: u64 = 0; // nanoseconds since render_start
+var last_print_mutex: std.Io.Mutex = .init;
 
 var chunk_start: usize = 0;
-var chunk_mutex = std.Thread.Mutex{};
+var chunk_mutex: std.Io.Mutex = .init;
 
 var finished_pixels: usize = 0;
 
@@ -34,6 +29,8 @@ fn dispatchRender(
     settings: *const io.Settings,
     thread_num: usize,
     frame_buffer: []io.Pixel,
+    stdio: std.Io,
+    stdout: *std.Io.Writer,
 ) !void {
     var rng: smp.PCGHash = smp.PCGHash{ .state = @as(u32, @intCast(42 + thread_num)) };
     while (chunk_start < frame_buffer.len) {
@@ -41,7 +38,7 @@ fn dispatchRender(
             const chunk_end: usize = @min(chunk_start + chunk_size, frame_buffer.len);
             const chunk_start_current: usize = chunk_start;
             chunk_start = chunk_end;
-            chunk_mutex.unlock();
+            chunk_mutex.unlock(stdio);
             try renderPixels(
                 rays,
                 scene,
@@ -50,6 +47,8 @@ fn dispatchRender(
                 chunk_start_current,
                 chunk_end,
                 frame_buffer,
+                stdio,
+                stdout,
             );
         }
     }
@@ -62,9 +61,14 @@ const BounceNode = struct {
     prob: f32 = 1.0,
 };
 
-fn printRenderProgress(current_time: u64, total_pixels: u64) !void {
+fn printRenderProgress(
+    current_time: u64,
+    total_pixels: u64,
+    stdio: std.Io,
+    stdout: *std.Io.Writer,
+) !void {
     if (last_print_mutex.tryLock()) {
-        defer last_print_mutex.unlock();
+        defer last_print_mutex.unlock(stdio);
         last_print_time = current_time;
         try stdout.print("\x1b[1K\r", .{});
         try stdout.print(
@@ -102,6 +106,8 @@ fn renderPixels(
     begin_i: usize,
     end_i: usize,
     frame_buffer: []io.Pixel,
+    stdio: std.Io,
+    stdout: *std.Io.Writer,
 ) !void {
     const max_bounces: usize = 1 << 3;
     var bounce_stack: [max_bounces]BounceNode = undefined;
@@ -121,9 +127,9 @@ fn renderPixels(
 
         // occasionally print a progress update
 
-        const current_time = render_timer.read();
+        const current_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
         if (current_time - last_print_time > 100000000) {
-            try printRenderProgress(current_time, frame_buffer.len);
+            try printRenderProgress(current_time, frame_buffer.len, stdio, stdout);
         }
 
         // render
@@ -238,27 +244,31 @@ fn initializePerspectiveRays(settings: io.Settings, allocator: std.mem.Allocator
     return rays;
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
+
     // preliminaries
+
+    var io_instance: std.Io.Threaded = .init_single_threaded;
+    const stdio = io_instance.io();
+
+    var stdout_w = std.Io.File.stdout().writer(stdio, &.{});
+    const stdout = &stdout_w.interface;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator: std.mem.Allocator = arena.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
+    const args = try init.args.toSlice(allocator);
     if (args.len != 2) {
         try stdout.print("  usage: metropolis <input_file>\n", .{});
         return;
     }
 
-    const input = try io.readInput(args[1], allocator);
-
+    const input = try io.readInput(args[1], allocator, stdio, stdout);
     const settings: io.Settings = input.settings;
     const scene: []geom.Object = input.scene.items;
 
-    // initialization
+    // initialize frame buffer
 
     const frame_buffer: []io.Pixel = try allocator.alloc(
         io.Pixel,
@@ -269,14 +279,15 @@ pub fn main() !void {
     // initialize rays
 
     try stdout.print("  initializing rays...\n", .{});
+
     const rays: []m.Vec3 = try initializePerspectiveRays(settings, allocator);
     defer allocator.free(rays);
 
-    // render diffuse reflection
+    // render...
 
     try stdout.print("  rendering...\n", .{});
 
-    render_timer = try std.time.Timer.start();
+    render_start = .now(stdio, .awake);
     last_print_time = 0;
 
     const pool = try allocator.alloc(std.Thread, settings.thread_count);
@@ -287,13 +298,20 @@ pub fn main() !void {
             &settings,
             thread_num,
             frame_buffer,
+            stdio,
+            stdout,
         });
     }
     for (pool) |thread| {
         thread.join();
     }
-    try printRenderProgress(render_timer.read(), frame_buffer.len); // ensure 100% update is printed
+
+    // ensure 100% update is printed
+    const final_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
+    try printRenderProgress(final_time, frame_buffer.len, stdio, stdout);
+
+    // finalize
 
     try stdout.print("\n  writing image...\n", .{});
-    try io.writeImage(frame_buffer, settings, "image.ppm");
+    try io.writeImage(stdio, frame_buffer, settings, "image.ppm");
 }

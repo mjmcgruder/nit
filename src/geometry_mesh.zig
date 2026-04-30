@@ -10,11 +10,6 @@ const mul = math.mul;
 const Vec3 = math.Vec3;
 const Allocator = std.mem.Allocator;
 
-var stdout_writer = std.fs.File.stdout().writer(&.{});
-var stderr_writer = std.fs.File.stderr().writer(&.{});
-const stdout = &stdout_writer.interface;
-const stderr = &stderr_writer.interface;
-
 pub const Mesh = struct {
     vrt: []Vec3 = &.{},
     ind: []u32 = &.{},
@@ -45,7 +40,7 @@ fn findNodeBBOX(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.
             mesh.vrt[mesh.ind[3 * tri_index + 2]],
         };
         for (vertices) |vertex| {
-            for (0..3) |dim| {
+            inline for (0..3) |dim| {
                 if (vertex[dim] < min[dim]) min[dim] = vertex[dim];
                 if (vertex[dim] > max[dim]) max[dim] = vertex[dim];
             }
@@ -136,7 +131,9 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
         var lo_max: u32 = min;
         var hi_min: u32 = max;
         while (lo_max < hi_min) {
-            if (centroids[mesh.bvh.indices[lo_max]][split_dim] > node.center[split_dim]) {
+            const c: Vec3 = centroids[mesh.bvh.indices[lo_max]];
+            const centroid: [3]f32 = .{ c[0], c[1], c[2] }; // NOTE: unwrapped to not index @Vector with runtime var, move to Vec3c...
+            if (centroid[split_dim] > node.center[split_dim]) {
                 hi_min -= 1;
                 std.mem.swap(u32, &mesh.bvh.indices[lo_max], &mesh.bvh.indices[hi_min]);
             } else {
@@ -374,7 +371,12 @@ pub const BVHStats = struct {
     tris_average: f32 = 0.0,
 };
 
-pub fn printBVHStats(stats: BVHStats) !void {
+pub fn printBVHStats(stats: BVHStats, stdio: std.Io) !void {
+    var stdout_buffer: [1 << 10]u8 = undefined;
+    var stdout_w = std.Io.File.stdout().writer(stdio, &stdout_buffer);
+    const stdout = &stdout_w.interface;
+    defer stdout.flush() catch {};
+
     try stdout.print("  mesh triangles:    {f}\n", .{io.fmtComma(stats.mesh_ntri)});
     try stdout.print("  average depth:     {d:.1}\n", .{stats.depth_average});
     try stdout.print("  min depth:         {}\n", .{stats.depth_min});
