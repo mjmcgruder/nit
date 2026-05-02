@@ -254,23 +254,28 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var stdout_w = std.Io.File.stdout().writer(stdio, &.{});
     const stdout = &stdout_w.interface;
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator: std.mem.Allocator = arena.allocator();
+    var alloc_main_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer alloc_main_instance.deinit();
+    const alloc_main: std.mem.Allocator = alloc_main_instance.allocator();
 
-    const args = try init.args.toSlice(allocator);
+    var alloc_work_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer alloc_work_instance.deinit();
+    const alloc_work: std.mem.Allocator = alloc_work_instance.allocator();
+
+    const args = try init.args.toSlice(alloc_main);
     if (args.len != 2) {
         try stdout.print("  usage: metropolis <input_file>\n", .{});
         return;
     }
 
-    const input = try io.readInput(args[1], allocator, stdio, stdout);
+    const input = try io.readInput(args[1], alloc_main, alloc_work, stdio, stdout);
+    _ = alloc_work_instance.reset(.free_all);
     const settings: io.Settings = input.settings;
     const scene: []geom.Object = input.scene.items;
 
     // initialize frame buffer
 
-    const frame_buffer: []io.Pixel = try allocator.alloc(
+    const frame_buffer: []io.Pixel = try alloc_main.alloc(
         io.Pixel,
         settings.window_w * settings.window_h,
     );
@@ -280,8 +285,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     try stdout.print("  initializing rays...\n", .{});
 
-    const rays: []m.Vec3 = try initializePerspectiveRays(settings, allocator);
-    defer allocator.free(rays);
+    const rays: []m.Vec3 = try initializePerspectiveRays(settings, alloc_main);
+    defer alloc_main.free(rays);
 
     // render...
 
@@ -290,7 +295,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     render_start = .now(stdio, .awake);
     last_print_time = 0;
 
-    const pool = try allocator.alloc(std.Thread, settings.thread_count);
+    const pool = try alloc_main.alloc(std.Thread, settings.thread_count);
     for (pool, 0..) |*thread, thread_num| {
         thread.* = try std.Thread.spawn(.{}, dispatchRender, .{
             rays,

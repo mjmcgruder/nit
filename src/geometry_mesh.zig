@@ -287,7 +287,6 @@ pub fn deDupeMesh(mesh: Mesh, alloc_main: Allocator, alloc_work: Allocator) !Mes
         },
         std.hash_map.default_max_load_percentage,
     ) = .{};
-
     defer map.deinit(alloc_work);
 
     // Table mapping each vertex in the old list to its position in the new list.

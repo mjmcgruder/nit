@@ -176,7 +176,8 @@ const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).i
 
 pub fn readInput(
     rel_path: []const u8,
-    allocator: std.mem.Allocator,
+    alloc_main: std.mem.Allocator,
+    alloc_work: std.mem.Allocator,
     io: std.Io,
     stdout: *std.Io.Writer,
 ) !struct { settings: Settings, scene: std.ArrayList(geom.Object) } {
@@ -225,7 +226,7 @@ pub fn readInput(
                     .box => geometry = geom.GeometryType{ .box = .{} },
                     .mesh => geometry = geom.GeometryType{ .mesh = .{} },
                 }
-                try scene.append(allocator, geom.Object{ .geom = geometry });
+                try scene.append(alloc_main, geom.Object{ .geom = geometry });
                 continue :line_loop;
             } else {
                 return ParsingError.UnknownObjectType;
@@ -267,9 +268,12 @@ pub fn readInput(
                                 .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
                                 .box => |*value| value.*.size = try parseVec3(val),
                                 .mesh => |*value| value.* = blk: {
-                                    var mesh = try readASCIISTL(val, allocator, io, stdout);
+                                    const raw_mesh = try readASCIISTL(val, alloc_work, io, stdout);
+                                    try stdout.print("de-duplicating mesh vertices...\n", .{});
+                                    var mesh = try geom_mesh.deDupeMesh(raw_mesh, alloc_main, alloc_work);
+                                    try stdout.print("  done: {f} -> {f} vertices\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len) });
                                     try stdout.print("building BVH for \"{s}\"...\n", .{val});
-                                    const stats = try geom_mesh.buildBVH(&mesh, allocator);
+                                    const stats = try geom_mesh.buildBVH(&mesh, alloc_main);
                                     try stdout.print("BVH Stats for {s}:\n", .{val});
                                     try geom_mesh.printBVHStats(stats, io);
                                     break :blk mesh;
