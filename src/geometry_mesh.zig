@@ -8,10 +8,11 @@ const add = math.add;
 const sub = math.sub;
 const mul = math.mul;
 const Vec3 = math.Vec3;
+const Vec3c = math.Vec3c;
 const Allocator = std.mem.Allocator;
 
 pub const Mesh = struct {
-    vrt: []Vec3 = &.{},
+    vrt: []Vec3c = &.{},
     ind: []u32 = &.{},
     bvh: BoundingVolumeHierarchy = .{},
 };
@@ -34,7 +35,7 @@ fn findNodeBBOX(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.
     var max: Vec3 = math.set3(-std.math.floatMax(f32));
 
     for (tri_indices) |tri_index| {
-        const vertices: [3]Vec3 = .{
+        const vertices: [3]Vec3c = .{
             mesh.vrt[mesh.ind[3 * tri_index + 0]],
             mesh.vrt[mesh.ind[3 * tri_index + 1]],
             mesh.vrt[mesh.ind[3 * tri_index + 2]],
@@ -67,13 +68,14 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
     mesh.bvh.indices = try allocator.alloc(u32, ntri);
     for (0..ntri) |ti| mesh.bvh.indices[ti] = @intCast(ti);
 
-    var centroids: []Vec3 = try allocator.alloc(Vec3, ntri);
+    var centroids: []Vec3c = try allocator.alloc(Vec3c, ntri);
     defer allocator.free(centroids);
     for (0..ntri) |ti| {
-        const v0: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 0]];
-        const v1: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 1]];
-        const v2: Vec3 = mesh.vrt[mesh.ind[ti * 3 + 2]];
-        centroids[ti] = mul(add(add(v0, v1), v2), 1.0 / 3.0);
+        const v0 = mesh.vrt[mesh.ind[ti * 3 + 0]];
+        const v1 = mesh.vrt[mesh.ind[ti * 3 + 1]];
+        const v2 = mesh.vrt[mesh.ind[ti * 3 + 2]];
+        inline for (0..3) |dim|
+            centroids[ti][dim] = (v0[dim] + v1[dim] + v2[dim]) / 3.0;
     }
 
     findNodeBBOX(mesh, mesh.bvh.indices, &mesh.bvh.nodes[0]);
@@ -131,9 +133,7 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
         var lo_max: u32 = min;
         var hi_min: u32 = max;
         while (lo_max < hi_min) {
-            const c: Vec3 = centroids[mesh.bvh.indices[lo_max]];
-            const centroid: [3]f32 = .{ c[0], c[1], c[2] }; // NOTE: unwrapped to not index @Vector with runtime var, move to Vec3c...
-            if (centroid[split_dim] > node.center[split_dim]) {
+            if (centroids[mesh.bvh.indices[lo_max]][split_dim] > node.center[split_dim]) {
                 hi_min -= 1;
                 std.mem.swap(u32, &mesh.bvh.indices[lo_max], &mesh.bvh.indices[hi_min]);
             } else {
@@ -240,9 +240,9 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
             for (node.offset..(node.offset + node.count)) |ii| {
                 const ti: u32 = mesh.bvh.indices[ii];
                 const triangle: prim.Triangle = .{ .vertices = .{
-                    mesh.vrt[mesh.ind[3 * ti + 0]],
-                    mesh.vrt[mesh.ind[3 * ti + 1]],
-                    mesh.vrt[mesh.ind[3 * ti + 2]],
+                    math.makeVec3(mesh.vrt[mesh.ind[3 * ti + 0]]),
+                    math.makeVec3(mesh.vrt[mesh.ind[3 * ti + 1]]),
+                    math.makeVec3(mesh.vrt[mesh.ind[3 * ti + 2]]),
                 } };
                 if (prim.intersectRayTriangle(ray, triangle)) |intersect| {
                     if (intersect.dist < result.dist) {
@@ -272,17 +272,14 @@ pub fn deDupeMesh(mesh: Mesh, alloc_main: Allocator, alloc_work: Allocator) !Mes
     const ntri: usize = mesh.ind.len / 3;
 
     var map: std.HashMapUnmanaged(
-        Vec3,
+        Vec3c,
         u32,
         struct {
-            pub fn hash(_: @This(), v: Vec3) u64 {
-                const data: [3]f32 = .{ v[0], v[1], v[2] };
-                return std.hash.Wyhash.hash(0, std.mem.asBytes(&data));
+            pub fn hash(_: @This(), v: Vec3c) u64 {
+                return std.hash.Wyhash.hash(0, std.mem.asBytes(&v));
             }
-            pub fn eql(_: @This(), a: Vec3, b: Vec3) bool {
-                const data_a: [3]f32 = .{ a[0], a[1], a[2] };
-                const data_b: [3]f32 = .{ b[0], b[1], b[2] };
-                return std.mem.eql(u8, std.mem.asBytes(&data_a), std.mem.asBytes(&data_b));
+            pub fn eql(_: @This(), a: Vec3c, b: Vec3c) bool {
+                return std.mem.eql(u8, std.mem.asBytes(&a), std.mem.asBytes(&b));
             }
         },
         std.hash_map.default_max_load_percentage,
@@ -310,7 +307,7 @@ pub fn deDupeMesh(mesh: Mesh, alloc_main: Allocator, alloc_work: Allocator) !Mes
     }
 
     var result: Mesh = .{};
-    result.vrt = try alloc_main.alloc(Vec3, next_index);
+    result.vrt = try alloc_main.alloc(Vec3c, next_index);
     result.ind = try alloc_main.alloc(u32, mesh.ind.len);
 
     for (0..mesh.vrt.len) |vi| {
@@ -334,16 +331,16 @@ test "deDupeMesh --- cube" {
     defer arena_main.deinit();
     defer arena_work.deinit();
 
-    const v0: Vec3 = .{ 0.0, 0.0, 0.0 };
-    const v1: Vec3 = .{ 1.0, 0.0, 0.0 };
-    const v2: Vec3 = .{ 1.0, 1.0, 0.0 };
-    const v3: Vec3 = .{ 0.0, 1.0, 0.0 };
-    const v4: Vec3 = .{ 0.0, 0.0, 1.0 };
-    const v5: Vec3 = .{ 1.0, 0.0, 1.0 };
-    const v6: Vec3 = .{ 1.0, 1.0, 1.0 };
-    const v7: Vec3 = .{ 0.0, 1.0, 1.0 };
+    const v0: Vec3c = .{ 0.0, 0.0, 0.0 };
+    const v1: Vec3c = .{ 1.0, 0.0, 0.0 };
+    const v2: Vec3c = .{ 1.0, 1.0, 0.0 };
+    const v3: Vec3c = .{ 0.0, 1.0, 0.0 };
+    const v4: Vec3c = .{ 0.0, 0.0, 1.0 };
+    const v5: Vec3c = .{ 1.0, 0.0, 1.0 };
+    const v6: Vec3c = .{ 1.0, 1.0, 1.0 };
+    const v7: Vec3c = .{ 0.0, 1.0, 1.0 };
 
-    var vertices = [_]Vec3{
+    var vertices = [_]Vec3c{
         v0, v1, v2, v0, v2, v3, v4, v6, v5, v4, v7, v6, v0, v5, v1, v0, v4, v5,
         v3, v2, v6, v3, v6, v7, v0, v3, v7, v0, v7, v4, v1, v5, v6, v1, v6, v2,
     };
@@ -393,7 +390,7 @@ test "BVH --- builds" {
     defer arena.deinit();
     const allocator: std.mem.Allocator = arena.allocator();
 
-    var vertices = [_]Vec3{
+    var vertices = [_]Vec3c{
         .{ 0.0, 0.0, 0.0 },
         .{ 1.0, 0.0, 0.0 },
         .{ 1.0, 1.0, 0.0 },

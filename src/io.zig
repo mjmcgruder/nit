@@ -338,7 +338,7 @@ pub fn readASCIISTL(
         break :blk nfacets;
     };
 
-    const vrt = try allocator.alloc(m.Vec3, num_facets * 3);
+    const vrt = try allocator.alloc(m.Vec3c, num_facets * 3);
     const ind = try allocator.alloc(u32, num_facets * 3);
 
     try file_reader.seekTo(0);
@@ -373,7 +373,7 @@ pub fn readASCIISTL(
             if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "vertex"))
                 return STLReadError.FormatError;
 
-            var vertex: m.Vec3 = .{ 0.0, 0.0, 0.0 };
+            var vertex: m.Vec3c = .{ 0.0, 0.0, 0.0 };
             inline for (0..3) |i| {
                 vertex[i] = try std.fmt.parseFloat(f32, tok.next() orelse return STLReadError.FormatError);
             }
@@ -396,10 +396,18 @@ pub fn readASCIISTL(
 
 test "readInput --- runs" {
     const io = std.testing.io;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator: std.mem.Allocator = arena.allocator();
-    const input = try readInput(io, "src/test_data/input.txt", allocator);
+
+    var stdout_w = std.Io.File.stdout().writer(io, &.{});
+    const stdout = &stdout_w.interface;
+
+    var alloc_main_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer alloc_main_instance.deinit();
+    const alloc_main: std.mem.Allocator = alloc_main_instance.allocator();
+    var alloc_work_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer alloc_work_instance.deinit();
+    const alloc_work: std.mem.Allocator = alloc_work_instance.allocator();
+
+    const input = try readInput("src/test_data/input.txt", alloc_main, alloc_work, io, stdout);
 
     const settings = input.settings;
     try std.testing.expectEqual(settings.thread_count, 8);
@@ -437,21 +445,21 @@ test "readInput --- runs" {
 
     const mesh: geom_mesh.Mesh = scene[2].geom.mesh;
 
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[0]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[1]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[2]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[0]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[1]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[2]]);
 
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[3]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[4]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[5]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[3]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[4]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[5]]);
 
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[6]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[7]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[8]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[6]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[7]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[8]]);
 
-    try std.testing.expectEqual(@as(m.Vec3, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[9]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[10]]);
-    try std.testing.expectEqual(@as(m.Vec3, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[11]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[9]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[10]]);
+    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[11]]);
 
     try std.testing.expectEqual(scene[2].trfm, @as(m.Mat4, .{
         .{ 1.0, 0.0, 0.0, 0.0 },
