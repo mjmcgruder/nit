@@ -246,13 +246,15 @@ fn initializePerspectiveRays(settings: io.Settings, allocator: std.mem.Allocator
 
 pub fn main(init: std.process.Init.Minimal) !void {
 
-    // preliminaries
+    // preprocess
 
     var io_instance: std.Io.Threaded = .init_single_threaded;
     const stdio = io_instance.io();
 
     var stdout_w = std.Io.File.stdout().writer(stdio, &.{});
     const stdout = &stdout_w.interface;
+
+    try stdout.print("\n\npreprocessing...\n\n\n", .{});
 
     var alloc_main_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer alloc_main_instance.deinit();
@@ -273,7 +275,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const settings: io.Settings = input.settings;
     const scene: []geom.Object = input.scene.items;
 
-    // initialize frame buffer
+    // render
+
+    try stdout.print("\n\nrendering...\n\n\n", .{});
 
     const frame_buffer: []io.Pixel = try alloc_main.alloc(
         io.Pixel,
@@ -281,16 +285,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     );
     @memset(frame_buffer, io.Pixel{});
 
-    // initialize rays
-
-    try stdout.print("  initializing rays...\n", .{});
-
     const rays: []m.Vec3 = try initializePerspectiveRays(settings, alloc_main);
     defer alloc_main.free(rays);
-
-    // render...
-
-    try stdout.print("  rendering...\n", .{});
 
     render_start = .now(stdio, .awake);
     last_print_time = 0;

@@ -181,7 +181,7 @@ pub fn readInput(
     io: std.Io,
     stdout: *std.Io.Writer,
 ) !struct { settings: Settings, scene: std.ArrayList(geom.Object) } {
-    try stdout.print("reading input file \"{s}\"...\n", .{rel_path});
+    try stdout.print("Reading input file \"{s}\".\n", .{rel_path});
 
     var settings: Settings = .{};
     var scene: std.ArrayList(geom.Object) = .empty;
@@ -269,12 +269,12 @@ pub fn readInput(
                                 .box => |*value| value.*.size = try parseVec3(val),
                                 .mesh => |*value| value.* = blk: {
                                     const raw_mesh = try readASCIISTL(val, alloc_work, io, stdout);
-                                    try stdout.print("de-duplicating mesh vertices...\n", .{});
+                                    try stdout.print("Deduplicating mesh vertices... ", .{});
                                     var mesh = try geom_mesh.deDupeMesh(raw_mesh, alloc_main, alloc_work);
-                                    try stdout.print("  done: {f} -> {f} vertices\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len) });
-                                    try stdout.print("building BVH for \"{s}\"...\n", .{val});
+                                    try stdout.print("done ({f} -> {f} vertices).\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len) });
+                                    try stdout.print("Building BVH for \"{s}\"... ", .{val});
                                     const stats = try geom_mesh.buildBVH(&mesh, alloc_main);
-                                    try stdout.print("BVH Stats for {s}:\n", .{val});
+                                    try stdout.print("done.\n", .{});
                                     try geom_mesh.printBVHStats(stats, io);
                                     break :blk mesh;
                                 },
@@ -319,7 +319,7 @@ pub fn readASCIISTL(
 ) !geom_mesh.Mesh {
     const whitespace: []const u8 = " \t\r\n";
 
-    try stdout.print("reading ASCII STL file \"{s}\"...\n", .{rel_path});
+    try stdout.print("Reading ASCII STL file \"{s}\"... ", .{rel_path});
 
     var read_buffer: [1 << 18]u8 = undefined;
     const file = try std.Io.Dir.cwd().openFile(io, rel_path, .{});
@@ -355,6 +355,7 @@ pub fn readASCIISTL(
         const keyword = tok.next() orelse continue;
 
         if (std.mem.eql(u8, keyword, "endsolid")) {
+            try stdout.print("done.\n", .{});
             return .{ .vrt = vrt, .ind = ind };
         }
 
