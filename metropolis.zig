@@ -150,12 +150,13 @@ fn renderPixels(
                     var new_ray: m.Vec3 = undefined;
                     switch (intersect.mtrl) {
                         geom.Material.diffuse => {
-                            new_ray = smp.sampleHemisphere(intersect.geom.norm, rng);
+                            new_ray = smp.sampleHemisphereCosine(intersect.geom.norm, rng);
+                            const c_th: f32 = m.dot(new_ray, intersect.geom.norm);
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = m.mul(intersect.refl, 1.0 / std.math.pi),
                                 .emit = intersect.emit,
-                                .c_th = m.dot(new_ray, intersect.geom.norm),
-                                .prob = 1.0 / (2.0 * std.math.pi),
+                                .c_th = c_th, // yes cos(theta) cancels later, here for clarity
+                                .prob = c_th / std.math.pi,
                             };
                         },
                         geom.Material.specular => {

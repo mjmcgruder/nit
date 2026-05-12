@@ -48,7 +48,7 @@ pub fn buildCoordinateAxes(n: m.Vec3) CoordinateAxes {
 /// for the random point picking is also arbitrarily chosen, this should not have any negative
 /// impact to my knowledge.
 /// NOTE: the input normal vector MUST be normalized for correct results
-pub fn sampleHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
+pub fn sampleHemisphereUniform(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     const t: f32 = rng.float32() * 2.0 * std.math.pi;
     const u: f32 = rng.float32();
     const r: f32 = @sqrt(1.0 - u * u);
@@ -56,6 +56,19 @@ pub fn sampleHemisphere(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     const x: f32 = r * sc.c;
     const y: f32 = r * sc.s;
     const z: f32 = u;
+    const local: CoordinateAxes = buildCoordinateAxes(n);
+    return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
+}
+
+// Cosine-weighted hemisphere sampling using Malley's method.
+/// NOTE: the input normal vector MUST be normalized for correct results
+pub fn sampleHemisphereCosine(n: m.Vec3, rng: *PCGHash) m.Vec3 {
+    const r: f32 = @sqrt(rng.float32());
+    const t: f32 = 2.0 * std.math.pi * rng.float32();
+    const sc: m.SinCos = m.sincos_exact(t);
+    const x: f32 = r * sc.c;
+    const y: f32 = r * sc.s;
+    const z: f32 = @sqrt(1.0 - x * x - y * y);
     const local: CoordinateAxes = buildCoordinateAxes(n);
     return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
 }
@@ -84,7 +97,7 @@ test "buildLocalCoordinateAxes --- is normalized" {
     try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 10 * m.eps);
 }
 
-test "sampleHemisphere --- no polar bias, normalized, hemispherical" {
+test "sampleHemisphereUniform --- no polar bias, normalized, hemispherical" {
     const num_samp = 100000;
     const ray_pole = m.unit_z;
     const ray_othr = m.normalize(@as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
@@ -94,7 +107,7 @@ test "sampleHemisphere --- no polar bias, normalized, hemispherical" {
     var tally_pole: usize = 0;
     var tally_othr: usize = 0;
     for (0..num_samp) |_| {
-        const ray_samp: m.Vec3 = sampleHemisphere(ray_pole, &rng);
+        const ray_samp: m.Vec3 = sampleHemisphereUniform(ray_pole, &rng);
         if ((1.0 - m.dot(ray_samp, ray_pole)) < 0.1) tally_pole += 1;
         if ((1.0 - m.dot(ray_samp, ray_othr)) < 0.1) tally_othr += 1;
         // test overall hemisphere shape on the side
@@ -121,7 +134,7 @@ test "reflect --- between axes" {
 test "reflect --- equal dot product" {
     var rng: PCGHash = .{ .state = 37 };
     const n: m.Vec3 = m.normalize(@as(m.Vec3, .{ -1.0, -1.0, -1.0 }));
-    const w: m.Vec3 = sampleHemisphere(n, &rng);
+    const w: m.Vec3 = sampleHemisphereUniform(n, &rng);
     const r: m.Vec3 = reflect(n, w);
     try std.testing.expectApproxEqAbs(m.dot(n, w), m.dot(n, r), 4 * m.eps);
 }
