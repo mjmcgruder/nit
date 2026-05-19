@@ -193,7 +193,7 @@ fn renderPixels(
                 const node: BounceNode = bounce_stack[stack_i];
                 incoming = m.add(
                     node.emit,
-                    m.mul(m.mul(m.mul(node.brdf, incoming), node.c_th), 1.0 / node.prob),
+                    m.mul(m.mul(m.mul(node.brdf, incoming), node.c_th), m.sdiv(1.0, node.prob)),
                 );
             }
 

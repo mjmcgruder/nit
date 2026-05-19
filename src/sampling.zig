@@ -68,7 +68,7 @@ pub fn sampleHemisphereCosine(n: m.Vec3, rng: *PCGHash) m.Vec3 {
     const sc: m.SinCos = m.sincos_exact(t);
     const x: f32 = r * sc.c;
     const y: f32 = r * sc.s;
-    const z: f32 = @sqrt(1.0 - x * x - y * y);
+    const z: f32 = @sqrt(@max(1.0 - x * x - y * y, 0.0));
     const local: CoordinateAxes = buildCoordinateAxes(n);
     return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
 }
