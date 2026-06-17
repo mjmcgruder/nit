@@ -9,6 +9,10 @@ pub fn makeVec3(src: Vec3c) Vec3 {
     return .{ src[0], src[1], src[2] };
 }
 
+pub fn makeVec3c(src: Vec3) Vec3c {
+    return .{ src[0], src[1], src[2] };
+}
+
 pub fn toVec3(src: Vec4) Vec3 {
     return .{ src[0], src[1], src[2] };
 }

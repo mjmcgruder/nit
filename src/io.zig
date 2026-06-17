@@ -270,11 +270,17 @@ pub fn readInput(
                                 .mesh => |*value| value.* = blk: {
                                     const raw_mesh = try readASCIISTL(val, alloc_work, io, stdout);
                                     try stdout.print("Deduplicating mesh vertices... ", .{});
+                                    const dedupe_start = std.Io.Clock.awake.now(io).nanoseconds;
                                     var mesh = try geom_mesh.deDupeMesh(raw_mesh, alloc_main, alloc_work);
-                                    try stdout.print("done ({f} -> {f} vertices).\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len) });
+                                    const dedupe_stop = std.Io.Clock.awake.now(io).nanoseconds;
+                                    const dedupe_duration = @as(f32, @floatFromInt(dedupe_stop - dedupe_start)) / std.time.ns_per_s;
+                                    try stdout.print("done ({f} -> {f} vertices in {d:.3}s).\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len), dedupe_duration });
                                     try stdout.print("Building BVH for \"{s}\"... ", .{val});
-                                    const stats = try geom_mesh.buildBVH(&mesh, alloc_main);
-                                    try stdout.print("done.\n", .{});
+                                    const bvh_build_start = std.Io.Clock.awake.now(io).nanoseconds;
+                                    const stats = try geom_mesh.buildBVH(&mesh, alloc_main, 4, 1 << 4);
+                                    const bvh_build_stop = std.Io.Clock.awake.now(io).nanoseconds;
+                                    const bvh_build_duration = @as(f32, @floatFromInt(bvh_build_stop - bvh_build_start)) / std.time.ns_per_s;
+                                    try stdout.print("done (in {d:.3}s).\n", .{bvh_build_duration});
                                     try geom_mesh.printBVHStats(stats, io);
                                     break :blk mesh;
                                 },

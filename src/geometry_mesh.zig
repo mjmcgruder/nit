@@ -17,12 +17,9 @@ pub const Mesh = struct {
     bvh: BoundingVolumeHierarchy = .{},
 };
 
-const bvh_max_depth = 32; // BVH will admit 2^max_depth partitions
-
 pub const BoundingVolumeHierarchy = struct {
     pub const Node = struct {
-        center: [3]f32,
-        extent: [3]f32,
+        bbox: BoxCenterExtent,
         offset: u32, // primitive offset if leaf, first child offset if interior
         count: u32, // 0 if interior, positive otherwise
     };
@@ -30,32 +27,92 @@ pub const BoundingVolumeHierarchy = struct {
     indices: []u32 = &.{},
 };
 
-fn findNodeBBOX(mesh: *Mesh, tri_indices: []u32, node: *BoundingVolumeHierarchy.Node) void {
-    var min: Vec3 = math.set3(std.math.floatMax(f32));
-    var max: Vec3 = math.set3(-std.math.floatMax(f32));
+const BoxCenterExtent = struct {
+    center: Vec3c,
+    extent: Vec3c, // this is a "half extent"
+};
 
-    for (tri_indices) |tri_index| {
-        const vertices: [3]Vec3c = .{
-            mesh.vrt[mesh.ind[3 * tri_index + 0]],
-            mesh.vrt[mesh.ind[3 * tri_index + 1]],
-            mesh.vrt[mesh.ind[3 * tri_index + 2]],
-        };
-        for (vertices) |vertex| {
-            inline for (0..3) |dim| {
-                if (vertex[dim] < min[dim]) min[dim] = vertex[dim];
-                if (vertex[dim] > max[dim]) max[dim] = vertex[dim];
-            }
+const Box = struct {
+    min: Vec3c = @splat(std.math.floatMax(f32)),
+    max: Vec3c = @splat(-std.math.floatMax(f32)),
+    fn grow(self: *Box, point: Vec3c) void {
+        inline for (0..3) |dim| {
+            if (point[dim] < self.min[dim]) self.min[dim] = point[dim];
+            if (point[dim] > self.max[dim]) self.max[dim] = point[dim];
         }
     }
+    fn getCenter(self: Box) Vec3 {
+        return .{
+            0.5 * (self.max[0] + self.min[0]),
+            0.5 * (self.max[1] + self.min[1]),
+            0.5 * (self.max[2] + self.min[2]),
+        };
+    }
+    fn getExtent(self: Box) Vec3 {
+        return .{
+            self.max[0] - self.min[0],
+            self.max[1] - self.min[1],
+            self.max[2] - self.min[2],
+        };
+    }
+};
 
-    const center: Vec3 = mul(add(max, min), 0.5);
-    const extent: Vec3 = mul(sub(max, min), 0.5);
-
-    node.center = .{ center[0], center[1], center[2] };
-    node.extent = .{ extent[0], extent[1], extent[2] };
+fn toCenterExtent(box: Box) BoxCenterExtent {
+    var boxCenterExtent: BoxCenterExtent = undefined;
+    inline for (0..3) |di| {
+        boxCenterExtent.center[di] = 0.5 * (box.max[di] + box.min[di]);
+        boxCenterExtent.extent[di] = 0.5 * (box.max[di] - box.min[di]);
+    }
+    return boxCenterExtent;
 }
 
-pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
+fn findBoundingVolume(mesh: *Mesh, tri_indices: []u32) Box {
+    var box = Box{};
+    for (tri_indices) |ti| {
+        const index_offset = 3 * ti;
+        for (0..3) |vi| {
+            box.grow(mesh.vrt[mesh.ind[index_offset + vi]]);
+        }
+    }
+    return box;
+}
+
+fn findSurfaceArea(box: Box) f32 {
+    const dx = box.max[0] - box.min[0];
+    const dy = box.max[1] - box.min[1];
+    const dz = box.max[2] - box.min[2];
+    return 2.0 * ((dy * dz) + (dx * dz) + (dx * dy));
+}
+
+fn costSAH(nL: u32, nR: u32, aL: f32, aR: f32) f32 {
+    return @as(f32, @floatFromInt(nL)) * aL + @as(f32, @floatFromInt(nR)) * aR;
+}
+
+fn select(min: u32, max: u32, dim: usize, pos: f32, centroids: []Vec3c, indices: []u32) u32 {
+    var lo_max: u32 = min;
+    var hi_min: u32 = max;
+    while (lo_max < hi_min) {
+        if (centroids[indices[lo_max]][dim] > pos) {
+            hi_min -= 1;
+            std.mem.swap(u32, &indices[lo_max], &indices[hi_min]);
+        } else {
+            lo_max += 1;
+        }
+    }
+    // Note that lo_max should always be equal to hi_min at this point. So the area above really
+    // returns a "split coorindate" and the list section sorted at the boundary.
+    std.debug.assert(lo_max == hi_min);
+    return hi_min;
+}
+
+const bvh_max_depth = 32; // BVH will admit 2^max_depth partitions
+
+pub fn buildBVH(
+    mesh: *Mesh,
+    allocator: std.mem.Allocator,
+    comptime max_leaf_nodes: usize,
+    comptime num_bins: usize,
+) !BVHStats {
     const ntri: usize = mesh.ind.len / 3;
     const max_nodes: usize = 2 * ntri - 1;
     std.debug.assert(mesh.ind.len % 3 == 0);
@@ -66,7 +123,6 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
 
     mesh.bvh.nodes = try allocator.alloc(BoundingVolumeHierarchy.Node, max_nodes);
     mesh.bvh.indices = try allocator.alloc(u32, ntri);
-    for (0..ntri) |ti| mesh.bvh.indices[ti] = @intCast(ti);
 
     var centroids: []Vec3c = try allocator.alloc(Vec3c, ntri);
     defer allocator.free(centroids);
@@ -78,7 +134,8 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             centroids[ti][dim] = (v0[dim] + v1[dim] + v2[dim]) / 3.0;
     }
 
-    findNodeBBOX(mesh, mesh.bvh.indices, &mesh.bvh.nodes[0]);
+    for (0..ntri) |ti| mesh.bvh.indices[ti] = @intCast(ti);
+    mesh.bvh.nodes[0].bbox = toCenterExtent(findBoundingVolume(mesh, mesh.bvh.indices));
     mesh.bvh.nodes[0].count = @intCast(ntri);
     mesh.bvh.nodes[0].offset = 0;
 
@@ -87,17 +144,17 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
         depth: u32,
     };
 
-    var node_stack: [bvh_max_depth + 1]BVHBuildNode = undefined;
-    node_stack[0] = .{ .node_index = 0, .depth = 0 };
-    var node_stack_head: u32 = 1;
+    var build_stack: [bvh_max_depth + 1]BVHBuildNode = undefined;
+    build_stack[0] = .{ .node_index = 0, .depth = 0 };
+    var build_stack_head: u32 = 1;
 
     var next_node: u32 = 1;
-    while (node_stack_head > 0) {
-        std.debug.assert(node_stack_head - 1 <= bvh_max_depth);
+    while (build_stack_head > 0) {
+        std.debug.assert(build_stack_head - 1 <= bvh_max_depth);
 
-        const stack_node: BVHBuildNode = node_stack[node_stack_head - 1];
+        const stack_node: BVHBuildNode = build_stack[build_stack_head - 1];
         const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.node_index];
-        node_stack_head -= 1;
+        build_stack_head -= 1;
 
         defer { // each iteration "retires" one node, it is logged here
             if (node.count == 0) {
@@ -113,57 +170,115 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
             }
         }
 
-        if ((node.count <= 4) or (stack_node.depth + 1 > bvh_max_depth)) continue;
-
-        const split_dim: usize = blk: {
-            var max_extent: f32 = -std.math.floatMax(f32);
-            var max_dim: usize = 0;
-            for (0..3) |dim| {
-                if (node.extent[dim] > max_extent) {
-                    max_extent = node.extent[dim];
-                    max_dim = dim;
-                }
-            }
-            break :blk max_dim;
-        };
+        if ((node.count <= max_leaf_nodes) or (stack_node.depth + 1 > bvh_max_depth)) continue;
 
         const min: u32 = node.offset;
         const max: u32 = node.offset + node.count;
 
-        var lo_max: u32 = min;
-        var hi_min: u32 = max;
-        while (lo_max < hi_min) {
-            if (centroids[mesh.bvh.indices[lo_max]][split_dim] > node.center[split_dim]) {
-                hi_min -= 1;
-                std.mem.swap(u32, &mesh.bvh.indices[lo_max], &mesh.bvh.indices[hi_min]);
-            } else {
-                lo_max += 1;
+        var split_dim: usize = 0;
+        var split_pos: f32 = node.bbox.center[split_dim];
+        var split_countL: u32 = 0;
+        var split_countR: u32 = 0;
+        var split_boxL: Box = .{};
+        var split_boxR: Box = .{};
+
+        const Bin = struct {
+            box: Box = .{},
+            ntri: u32 = 0,
+        };
+
+        const max_bin_flt: f32 = comptime @floatFromInt(num_bins - 1);
+        var min_cost: f32 = std.math.floatMax(f32);
+        inline for (0..3) |di| {
+            const interval: f32 = (2.0 * node.bbox.extent[di]) / @as(f32, @floatFromInt(num_bins));
+            const corner: f32 = node.bbox.center[di] - node.bbox.extent[di];
+
+            // find bin contents
+            var bins: [num_bins]Bin = @splat(Bin{});
+            {
+                for (min..max) |ii| {
+                    const ti: u32 = mesh.bvh.indices[ii];
+                    const bi: usize = @intFromFloat(
+                        @min(@max((centroids[ti][di] - corner) / interval, 0.0), max_bin_flt),
+                    );
+                    bins[bi].ntri += 1;
+                    for (0..3) |vi| {
+                        bins[bi].box.grow(mesh.vrt[mesh.ind[3 * ti + vi]]);
+                    }
+                }
+            }
+
+            // find split contents
+            var countsL: [num_bins - 1]u32 = @splat(0);
+            var countsR: [num_bins - 1]u32 = @splat(0);
+            var boxesL: [num_bins - 1]Box = @splat(Box{});
+            var boxesR: [num_bins - 1]Box = @splat(Box{});
+            {
+                var countL: u32 = 0;
+                var countR: u32 = 0;
+                var boxL: Box = .{};
+                var boxR: Box = .{};
+                for (0..(num_bins - 1)) |fsi| { // forward split iterator
+                    if (bins[fsi].ntri > 0) {
+                        countL += bins[fsi].ntri;
+                        boxL.grow(bins[fsi].box.min);
+                        boxL.grow(bins[fsi].box.max);
+                    }
+                    countsL[fsi] = countL;
+                    boxesL[fsi] = boxL;
+                    const rsi: usize = (num_bins - 2) - fsi; // reverse split iterator
+                    if (bins[rsi + 1].ntri > 0) {
+                        countR += bins[rsi + 1].ntri;
+                        boxR.grow(bins[rsi + 1].box.min);
+                        boxR.grow(bins[rsi + 1].box.max);
+                    }
+                    countsR[rsi] = countR;
+                    boxesR[rsi] = boxR;
+                }
+            }
+
+            // find minimum cost split
+            for (0..(num_bins - 1)) |si| {
+                const cost = costSAH(
+                    countsL[si],
+                    countsR[si],
+                    findSurfaceArea(boxesL[si]),
+                    findSurfaceArea(boxesR[si]),
+                );
+                if (cost < min_cost) {
+                    split_dim = di;
+                    split_pos = corner + interval * @as(f32, @floatFromInt(si + 1));
+                    split_countL = countsL[si];
+                    split_countR = countsR[si];
+                    split_boxL = boxesL[si];
+                    split_boxR = boxesR[si];
+                    min_cost = cost;
+                }
             }
         }
-        std.debug.assert(lo_max == hi_min);
-        // Note that lo_max should always be equal to hi_min at this point. So the area above really
-        // returns a "split coorindate" and the list section sorted at the boundary.
+
+        _ = select(min, max, split_dim, split_pos, centroids, mesh.bvh.indices);
 
         // NOTE: We must always ensure each newly created leaf has at least one triangle, otherwise
         // the node structure doesn't work since we assume all interior nodes have count 0.
-        if ((lo_max - min > 0) and (max - hi_min > 0)) {
+        if ((split_countL > 0) and (split_countR > 0)) {
             node.count = 0; // set interior
             node.offset = next_node;
 
-            findNodeBBOX(mesh, mesh.bvh.indices[min..lo_max], &mesh.bvh.nodes[next_node]);
             std.debug.assert(next_node < mesh.bvh.nodes.len);
-            mesh.bvh.nodes[next_node].count = lo_max - min;
+            mesh.bvh.nodes[next_node].bbox = toCenterExtent(split_boxL);
+            mesh.bvh.nodes[next_node].count = split_countL;
             mesh.bvh.nodes[next_node].offset = min;
-            node_stack[node_stack_head] = .{ .node_index = next_node, .depth = stack_node.depth + 1 };
-            node_stack_head += 1;
+            build_stack[build_stack_head] = .{ .node_index = next_node, .depth = stack_node.depth + 1 };
+            build_stack_head += 1;
             next_node += 1;
 
-            findNodeBBOX(mesh, mesh.bvh.indices[hi_min..max], &mesh.bvh.nodes[next_node]);
             std.debug.assert(next_node < mesh.bvh.nodes.len);
-            mesh.bvh.nodes[next_node].count = max - hi_min;
-            mesh.bvh.nodes[next_node].offset = hi_min;
-            node_stack[node_stack_head] = .{ .node_index = next_node, .depth = stack_node.depth + 1 };
-            node_stack_head += 1;
+            mesh.bvh.nodes[next_node].bbox = toCenterExtent(split_boxR);
+            mesh.bvh.nodes[next_node].count = split_countR;
+            mesh.bvh.nodes[next_node].offset = min + split_countL;
+            build_stack[build_stack_head] = .{ .node_index = next_node, .depth = stack_node.depth + 1 };
+            build_stack_head += 1;
             next_node += 1;
         }
     }
@@ -173,6 +288,40 @@ pub fn buildBVH(mesh: *Mesh, allocator: std.mem.Allocator) !BVHStats {
     stats.tris_average /= @as(f32, @floatFromInt(stats.nodes_leaf));
 
     return stats;
+}
+
+test "BVH --- splits planes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator: std.mem.Allocator = arena.allocator();
+
+    var vrt = [_]Vec3c{ // initialized such that the first swap yields two x-normal planes
+        .{ 0.0, 0.0, 0.25 }, .{ 1.0, 0.0, 0.25 }, .{ 0.0, 1.0, 0.25 }, .{ 1.0, 1.0, 0.25 },
+        .{ 0.0, 0.0, 0.75 }, .{ 1.0, 0.0, 0.75 }, .{ 0.0, 1.0, 0.75 }, .{ 1.0, 1.0, 0.75 },
+    };
+    var ind = [_]u32{
+        0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6,
+    };
+
+    const vol = struct {
+        fn f(box: BoxCenterExtent) f32 {
+            return (2.0 * box.extent[0]) * (2.0 * box.extent[1]) * (2.0 * box.extent[2]);
+        }
+    }.f;
+
+    for (0..3) |di| {
+        for (&vrt) |*vertex| {
+            std.mem.swap(f32, &vertex[di], &vertex[(di + 2) % 3]);
+        }
+
+        var mesh = Mesh{ .vrt = &vrt, .ind = &ind };
+        const stats = try buildBVH(&mesh, allocator, 2, 4);
+
+        try std.testing.expectEqual(3, stats.nodes_total);
+        try std.testing.expectApproxEqAbs(0.5, vol(mesh.bvh.nodes[0].bbox), 4.0 * math.eps);
+        try std.testing.expectApproxEqAbs(0.0, vol(mesh.bvh.nodes[1].bbox), 4.0 * math.eps);
+        try std.testing.expectApproxEqAbs(0.0, vol(mesh.bvh.nodes[2].bbox), 4.0 * math.eps);
+    }
 }
 
 pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
@@ -185,11 +334,9 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
 
     var traversal_stack: [bvh_max_depth + 1]RayMeshStackNode = undefined;
 
-    const root_center: Vec3 = math.makeVec3(mesh.bvh.nodes[0].center);
-    const root_extent: Vec3 = math.makeVec3(mesh.bvh.nodes[0].extent);
     if (prim.intersectRayBoxDist(
-        .{ .d = ray.d, .o = sub(ray.o, root_center) },
-        .{ .size = root_extent },
+        .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(mesh.bvh.nodes[0].bbox.center)) },
+        .{ .size = math.makeVec3(mesh.bvh.nodes[0].bbox.extent) },
     )) |root_dist| {
         traversal_stack[0].indx = 0;
         traversal_stack[0].dist = root_dist;
@@ -212,12 +359,12 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
             const child1: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset + 1];
 
             const dist0: f32 = prim.intersectRayBoxDist(
-                .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child0.center)) },
-                .{ .size = math.makeVec3(child0.extent) },
+                .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child0.bbox.center)) },
+                .{ .size = child0.bbox.extent },
             ) orelse std.math.floatMax(f32);
             const dist1: f32 = prim.intersectRayBoxDist(
-                .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child1.center)) },
-                .{ .size = math.makeVec3(child1.extent) },
+                .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child1.bbox.center)) },
+                .{ .size = child1.bbox.extent },
             ) orelse std.math.floatMax(f32);
 
             var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = dist0 };
@@ -254,6 +401,34 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
     }
 
     return if (result.dist == std.math.floatMax(f32)) null else result;
+}
+
+test "BVH --- intersects" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator: std.mem.Allocator = arena.allocator();
+
+    var vertices = [_]Vec3c{
+        .{ 0.0, 0.0, 0.0 }, .{ 1.0, 0.0, 0.0 }, .{ 1.0, 1.0, 0.0 }, .{ 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 1.0 }, .{ 1.0, 0.0, 1.0 }, .{ 1.0, 1.0, 1.0 }, .{ 0.0, 1.0, 1.0 },
+    };
+    var indices = [_]u32{
+        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6,
+        0, 5, 1, 0, 4, 5, 3, 2, 6, 3, 6, 7,
+        0, 3, 7, 0, 7, 4, 1, 5, 6, 1, 6, 2,
+    };
+
+    var mesh: Mesh = .{ .vrt = &vertices, .ind = &indices };
+    _ = try buildBVH(&mesh, allocator, 4, 16);
+
+    const ray: prim.Ray = .{ .o = .{ -2.0, 0.2, 0.2 }, .d = .{ 1.0, 0.0, 0.0 } };
+
+    if (intersectRayMesh(ray, mesh)) |result| {
+        try std.testing.expectEqual(2.0, result.dist);
+        try std.testing.expectEqual(@as(Vec3, .{ -1.0, 0.0, 0.0 }), result.norm);
+    } else {
+        try std.testing.expect(false);
+    }
 }
 
 /// Mesh de-duplication adapted from Arseny Kapoulkine's meshoptimizer. It's just slower and less
@@ -383,49 +558,4 @@ pub fn printBVHStats(stats: BVHStats, stdio: std.Io) !void {
     try stdout.print("  min triangles:     {f}\n", .{io.fmtComma(stats.tris_min)});
     try stdout.print("  max triangles:     {f}\n", .{io.fmtComma(stats.tris_max)});
     try stdout.print("  average triangles: {d:.2}\n", .{stats.tris_average});
-}
-
-test "BVH --- builds" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator: std.mem.Allocator = arena.allocator();
-
-    var vertices = [_]Vec3c{
-        .{ 0.0, 0.0, 0.0 },
-        .{ 1.0, 0.0, 0.0 },
-        .{ 1.0, 1.0, 0.0 },
-        .{ 0.0, 1.0, 0.0 },
-        .{ 0.0, 0.0, 1.0 },
-        .{ 1.0, 0.0, 1.0 },
-        .{ 1.0, 1.0, 1.0 },
-        .{ 0.0, 1.0, 1.0 },
-    };
-    var indices = [_]u32{
-        0, 1, 2,
-        0, 2, 3,
-        4, 6, 5,
-        4, 7, 6,
-        0, 5, 1,
-        0, 4, 5,
-        3, 2, 6,
-        3, 6, 7,
-        0, 3, 7,
-        0, 7, 4,
-        1, 5, 6,
-        1, 6, 2,
-    };
-
-    var mesh: Mesh = .{};
-    mesh.vrt = &vertices;
-    mesh.ind = &indices;
-
-    _ = try buildBVH(&mesh, allocator);
-
-    const ray: prim.Ray = .{ .o = .{ -2.0, 0.2, 0.2 }, .d = .{ 1.0, 0.0, 0.0 } };
-    if (intersectRayMesh(ray, mesh)) |result| {
-        try std.testing.expectEqual(2, result.dist);
-        try std.testing.expectEqual(@as(Vec3, .{ -1.0, 0.0, 0.0 }), result.norm);
-    } else {
-        try std.testing.expect(false);
-    }
 }
