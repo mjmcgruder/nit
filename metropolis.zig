@@ -3,6 +3,7 @@ const std = @import("std");
 const m = @import("src/math.zig");
 const io = @import("src/io.zig");
 const smp = @import("src/sampling.zig");
+const rand = @import("src/random.zig");
 const geom = @import("src/geometry.zig");
 
 test {
@@ -32,7 +33,7 @@ fn dispatchRender(
     stdio: std.Io,
     stdout: *std.Io.Writer,
 ) !void {
-    var rng: smp.PCGHash = smp.PCGHash{ .state = @as(u32, @intCast(42 + thread_num)) };
+    var rng: rand.PCGHash = rand.PCGHash{ .state = @as(u32, @intCast(42 + thread_num)) };
     while (chunk_start < frame_buffer.len) {
         if (chunk_mutex.tryLock()) {
             const chunk_end: usize = @min(chunk_start + chunk_size, frame_buffer.len);
@@ -102,7 +103,7 @@ fn renderPixels(
     rays: []const m.Vec3,
     scene: []const geom.Object,
     settings: *const io.Settings,
-    rng: *smp.PCGHash,
+    rng: *rand.PCGHash,
     begin_i: usize,
     end_i: usize,
     frame_buffer: []io.Pixel,
@@ -150,26 +151,29 @@ fn renderPixels(
                     var new_ray: m.Vec3 = undefined;
                     switch (intersect.mtrl) {
                         geom.Material.diffuse => {
-                            new_ray = smp.sampleHemisphereCosine(intersect.geom.norm, rng);
-                            const c_th: f32 = m.dot(new_ray, intersect.geom.norm);
+                            const sample: smp.BRDFSample =
+                                smp.sampleLambertianBRDF(intersect.geom.norm, rng);
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = m.mul(intersect.refl, 1.0 / std.math.pi),
                                 .emit = intersect.emit,
-                                .c_th = c_th, // yes cos(theta) cancels later, here for clarity
-                                .prob = c_th / std.math.pi,
+                                .c_th = sample.p * std.math.pi,
+                                .prob = sample.p,
                             };
+                            new_ray = sample.dir;
                         },
                         geom.Material.specular => {
-                            new_ray = smp.reflect(intersect.geom.norm, m.mul(rd, -1.0));
+                            const sample: smp.BRDFSample =
+                                smp.sampleSpecularBRDF(intersect.geom.norm, m.mul(rd, -1.0));
                             bounce_stack[stack_i] = BounceNode{
                                 .brdf = m.mul(
                                     intersect.refl,
-                                    m.sdiv(1.0, m.dot(new_ray, intersect.geom.norm)),
+                                    m.sdiv(1.0, m.dot(sample.dir, intersect.geom.norm)),
                                 ),
                                 .emit = intersect.emit,
-                                .c_th = m.dot(new_ray, intersect.geom.norm),
-                                .prob = 1.0,
+                                .c_th = m.dot(sample.dir, intersect.geom.norm),
+                                .prob = sample.p,
                             };
+                            new_ray = sample.dir;
                         },
                     }
                     ro = m.add(

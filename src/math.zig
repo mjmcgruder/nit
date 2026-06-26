@@ -229,39 +229,6 @@ pub inline fn sanitizeNan(a: f32) f32 {
     return if (std.math.isNan(a)) 0.0 else a;
 }
 
-pub const SinCos = struct {
-    s: f32,
-    c: f32,
-};
-
-pub inline fn sincos_exact(x: f32) SinCos {
-    return .{ .s = @sin(x), .c = @cos(x) };
-}
-
-pub inline fn sincos_approx(x: f32) SinCos {
-    @setEvalBranchQuota(1 << 12);
-
-    const twopi: f32 = comptime 2.0 * std.math.pi;
-    const inv_twopi: f32 = comptime 1.0 / twopi;
-
-    const table = comptime init_table: {
-        var sincos_table: [1 << 11]SinCos = undefined;
-
-        const dtheta: f32 = twopi / @as(f32, @floatFromInt(sincos_table.len));
-        var theta: f32 = 0.0;
-        for (&sincos_table) |*val| {
-            val.s = @sin(theta);
-            val.c = @cos(theta);
-            theta += dtheta;
-        }
-
-        break :init_table sincos_table;
-    };
-
-    const table_index: usize = @intFromFloat(x * inv_twopi * @as(f32, @floatFromInt(table.len)));
-    return table[table_index];
-}
-
 // TESTS -----
 
 test "add --- vector-vector" {
@@ -410,34 +377,6 @@ test "mag --- unit circle" {
 test "normalize --- makes magnitude 1" {
     const a: Vec3 = .{ 1.0, 1.0, 1.0 };
     try std.testing.expectApproxEqAbs(1.0, mag(normalize(a)), 4 * eps);
-}
-
-test "sincos --- sin cos quadrant 0" {
-    const x: f32 = std.math.pi / 8.0;
-    const sincos = sincos_approx(x);
-    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
-    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
-}
-
-test "sincos_approx --- sin cos quadrant 1" {
-    const x: f32 = 3.0 * (std.math.pi / 8.0);
-    const sincos = sincos_approx(x);
-    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
-    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
-}
-
-test "sincos_approx --- sin cos quadrant 2" {
-    const x: f32 = 9.0 * (std.math.pi / 8.0);
-    const sincos = sincos_approx(x);
-    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
-    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
-}
-
-test "sincos_approx --- sin cos quadrant 3" {
-    const x: f32 = 11.0 * (std.math.pi / 8.0);
-    const sincos = sincos_approx(x);
-    try std.testing.expectApproxEqRel(@sin(x), sincos.s, 1.0e-2);
-    try std.testing.expectApproxEqRel(@cos(x), sincos.c, 1.0e-2);
 }
 
 test "Mat4 --- identity" {

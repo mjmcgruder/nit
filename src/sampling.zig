@@ -1,140 +1,95 @@
 const std = @import("std");
 
-const m = @import("math.zig");
+const math = @import("math.zig");
+const random = @import("random.zig");
 
-/// Source: Hash Functions for GPU Rendering - Nathan Reed
-///   https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
-/// This struct is intended to provide thread-local state for the random number generator. There
-/// should be one instance per thread, not one for the entire program (TODO: why?).
-pub const PCGHash = struct {
-    state: u32,
-
-    /// Returns a pseudorandom unsigned 32 bit integer.
-    pub fn uint32(this: *PCGHash) u32 {
-        const state: u32 = this.state;
-        this.state = this.state *% 747796405 +% 2891336453;
-        const word: u32 = ((state >> (@as(u5, @intCast((state >> 28) + 4)))) ^ state) *% 277803737;
-        return (word >> 22) ^ word;
-    }
-
-    /// Returns a uniformly distributed random float in the interval [0, 1].
-    pub fn float32(this: *PCGHash) f32 {
-        const inv_max: f32 = comptime 1.0 / @as(comptime_float, @floatFromInt(std.math.maxInt(u32)));
-        return @as(f32, @floatFromInt(this.uint32())) * inv_max;
-    }
-};
-
-pub const CoordinateAxes = struct {
-    x: m.Vec3 = .{ 1.0, 0.0, 0.0 },
-    y: m.Vec3 = .{ 0.0, 1.0, 0.0 },
-    z: m.Vec3 = .{ 0.0, 0.0, 1.0 },
-};
+const add = math.add;
+const sub = math.sub;
+const mul = math.mul;
+const dot = math.dot;
+const mag = math.mag;
+const Vec3 = math.Vec3;
+const cross = math.cross;
+const normalize = math.normalize;
 
 /// Generates an arbitrary set of local coordinate axes such that the input normal vector is on the
 /// z-axis, all axes are normalized, and the coordinate system is right-handed.
-/// NOTE: the input normal vector MUST be normalized for correct results
-pub fn buildCoordinateAxes(n: m.Vec3) CoordinateAxes {
-    var local: CoordinateAxes = .{};
-    local.z = n;
-    local.y = m.normalize(m.cross(local.z, if (@abs(local.z[0]) < 0.9) m.unit_x else m.unit_y));
-    local.x = m.cross(local.y, local.z);
-    return local;
+/// NOTE: The input normal vector MUST be normalized for correct results.
+pub fn buildCoordinateAxes(n: Vec3) struct { Vec3, Vec3, Vec3 } {
+    std.debug.assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
+    const z: Vec3 = n;
+    const y: Vec3 = normalize(cross(z, if (@abs(z[0]) < 0.9) math.unit_x else math.unit_y));
+    const x: Vec3 = cross(y, z);
+    return .{ x, y, z };
 }
 
-/// This function is modified from the sphere point picking algorithm from Wolfram Math World.
-///   https://mathworld.wolfram.com/SpherePointPicking.html
-/// The only modification is "u" is chosen on the range [0.0, 1.0] instead of [-1.0, 1.0]. This
-/// turns random sphere point picking into random hemisphere point picking. The coordinate system
-/// for the random point picking is also arbitrarily chosen, this should not have any negative
-/// impact to my knowledge.
-/// NOTE: the input normal vector MUST be normalized for correct results
-pub fn sampleHemisphereUniform(n: m.Vec3, rng: *PCGHash) m.Vec3 {
-    const t: f32 = rng.float32() * 2.0 * std.math.pi;
-    const u: f32 = rng.float32();
-    const r: f32 = @sqrt(1.0 - u * u);
-    const sc: m.SinCos = m.sincos_exact(t);
-    const x: f32 = r * sc.c;
-    const y: f32 = r * sc.s;
-    const z: f32 = u;
-    const local: CoordinateAxes = buildCoordinateAxes(n);
-    return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
+test "buildLocalCoordinateAxes --- is right handed" {
+    const x, const y, const z = buildCoordinateAxes(
+        normalize(@as(Vec3, .{ -1.0, 2.71, 3.14 })),
+    );
+    try std.testing.expectApproxEqRel(1.0, dot(cross(x, y), z), 4.0 * math.eps);
 }
 
-// Cosine-weighted hemisphere sampling using Malley's method.
-/// NOTE: the input normal vector MUST be normalized for correct results
-pub fn sampleHemisphereCosine(n: m.Vec3, rng: *PCGHash) m.Vec3 {
+test "buildLocalCoordinateAxes --- is normalized" {
+    const x, const y, const z = buildCoordinateAxes(
+        normalize(@as(Vec3, .{ -1.0, 2.71, 3.14 })),
+    );
+    try std.testing.expectApproxEqRel(1.0, mag(x), 4.0 * math.eps);
+    try std.testing.expectApproxEqRel(1.0, mag(y), 4.0 * math.eps);
+    try std.testing.expectApproxEqRel(1.0, mag(z), 4.0 * math.eps);
+}
+
+pub const BRDFSample = struct {
+    dir: Vec3,
+    p: f32,
+};
+
+/// Cosine-weighted hemisphere sampling using Malley's method... sortof.
+/// Really this function samples the light transport equation integrand assuming a Lambertian BRDF
+/// and constant incoming radiance.
+/// NOTE: The input normal vector MUST be normalized for correct results.
+pub fn sampleLambertianBRDF(n: Vec3, rng: *random.PCGHash) BRDFSample {
+    std.debug.assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
     const r: f32 = @sqrt(rng.float32());
     const t: f32 = 2.0 * std.math.pi * rng.float32();
-    const sc: m.SinCos = m.sincos_exact(t);
-    const x: f32 = r * sc.c;
-    const y: f32 = r * sc.s;
+    const x: f32 = r * @cos(t);
+    const y: f32 = r * @sin(t);
     const z: f32 = @sqrt(@max(1.0 - x * x - y * y, 0.0));
-    const local: CoordinateAxes = buildCoordinateAxes(n);
-    return m.normalize(m.add(m.add(m.mul(local.x, x), m.mul(local.y, y)), m.mul(local.z, z)));
+    const x_axis, const y_axis, const z_axis = buildCoordinateAxes(n);
+    const d = normalize(add(add(mul(x_axis, x), mul(y_axis, y)), mul(z_axis, z)));
+    return .{ .dir = d, .p = dot(d, n) / std.math.pi };
+}
+
+test "sampleLambertianBRDF --- is cosine weighted" {
+    var rng = random.PCGHash{ .state = @as(u32, @intCast(42)) };
+    var nlo: usize = 0;
+    var nhi: usize = 0;
+    for (1..(1 << 10)) |_| {
+        const dir: Vec3 = sampleLambertianBRDF(.{ 0.0, 0.0, 1.0 }, &rng).dir;
+        if (dir[2] > comptime @sqrt(0.5)) nhi += 1 else nlo += 1;
+    }
+    const hifrac = @as(f32, @floatFromInt(nhi)) / @as(f32, @floatFromInt(nlo + nhi));
+    try std.testing.expectApproxEqRel(0.5, hifrac, 0.01);
 }
 
 /// Computes specular reflection given a normal vector, and a vector "w" pointing toward the light
 /// source (this is the opposite of the light's travel direction).
-pub fn reflect(n: m.Vec3, w: m.Vec3) m.Vec3 {
-    return m.normalize(m.sub(m.mul(2.0, m.mul(m.dot(n, w), n)), w));
+pub fn sampleSpecularBRDF(n: Vec3, w: Vec3) BRDFSample {
+    return .{ .dir = normalize(sub(mul(2.0, mul(dot(n, w), n)), w)), .p = 1.0 };
 }
 
-// TESTS -----
-
-test "buildLocalCoordinateAxes --- is right handed" {
-    const axes: CoordinateAxes = buildCoordinateAxes(
-        m.normalize(@as(m.Vec3, .{ -1.0, 2.71, 3.14 })),
-    );
-    try std.testing.expectApproxEqRel(1.0, m.dot(m.cross(axes.x, axes.y), axes.z), 10 * m.eps);
+test "sampleSpecularBRDF --- correct direction" {
+    const n: Vec3 = normalize(.{ -1.0, 0.0, -1.0 });
+    const w: Vec3 = normalize(.{ 0.0, 0.0, -1.0 });
+    const r: Vec3 = sampleSpecularBRDF(n, w).dir;
+    try std.testing.expectApproxEqRel(-1.0, r[0], 4.0 * math.eps);
+    try std.testing.expectApproxEqAbs(0.0, r[1], 4.0 * math.eps);
+    try std.testing.expectApproxEqAbs(0.0, r[2], 4.0 * math.eps);
 }
 
-test "buildLocalCoordinateAxes --- is normalized" {
-    const axes: CoordinateAxes = buildCoordinateAxes(
-        m.normalize(@as(m.Vec3, .{ -1.0, 2.71, 3.14 })),
-    );
-    try std.testing.expectApproxEqRel(1.0, m.mag(axes.x), 10 * m.eps);
-    try std.testing.expectApproxEqRel(1.0, m.mag(axes.y), 10 * m.eps);
-    try std.testing.expectApproxEqRel(1.0, m.mag(axes.z), 10 * m.eps);
-}
-
-test "sampleHemisphereUniform --- no polar bias, normalized, hemispherical" {
-    const num_samp = 100000;
-    const ray_pole = m.unit_z;
-    const ray_othr = m.normalize(@as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
-    const rtol = 2e-2;
-
-    var rng: PCGHash = .{ .state = 42 };
-    var tally_pole: usize = 0;
-    var tally_othr: usize = 0;
-    for (0..num_samp) |_| {
-        const ray_samp: m.Vec3 = sampleHemisphereUniform(ray_pole, &rng);
-        if ((1.0 - m.dot(ray_samp, ray_pole)) < 0.1) tally_pole += 1;
-        if ((1.0 - m.dot(ray_samp, ray_othr)) < 0.1) tally_othr += 1;
-        // test overall hemisphere shape on the side
-        try std.testing.expect(m.dot(ray_pole, ray_samp) >= 0.0);
-        try std.testing.expectApproxEqRel(m.mag(ray_samp), 1.0, 10 * m.eps);
-    }
-
-    try std.testing.expectApproxEqRel(
-        @as(f64, @floatFromInt(tally_pole)),
-        @as(f64, @floatFromInt(tally_othr)),
-        rtol,
-    );
-}
-
-test "reflect --- between axes" {
-    const n: m.Vec3 = m.normalize(@as(m.Vec3, .{ -1.0, 0.0, -1.0 }));
-    const w: m.Vec3 = m.normalize(@as(m.Vec3, .{ 0.0, 0.0, -1.0 }));
-    const r: m.Vec3 = reflect(n, w);
-    try std.testing.expectApproxEqAbs(-1.0, r[0], 10 * m.eps);
-    try std.testing.expectApproxEqAbs(0.0, r[1], 10 * m.eps);
-    try std.testing.expectApproxEqAbs(0.0, r[2], 10 * m.eps);
-}
-
-test "reflect --- equal dot product" {
-    var rng: PCGHash = .{ .state = 37 };
-    const n: m.Vec3 = m.normalize(@as(m.Vec3, .{ -1.0, -1.0, -1.0 }));
-    const w: m.Vec3 = sampleHemisphereUniform(n, &rng);
-    const r: m.Vec3 = reflect(n, w);
-    try std.testing.expectApproxEqAbs(m.dot(n, w), m.dot(n, r), 4 * m.eps);
+test "sampleSpecularBRDF --- equal dot product" {
+    const n: Vec3 = normalize(.{ -1.0, -1.0, -1.0 });
+    const w: Vec3 = normalize(.{ 3.0, 2.0, 1.0 });
+    const r: Vec3 = sampleSpecularBRDF(n, w).dir;
+    try std.testing.expectApproxEqRel(dot(n, w), dot(n, r), 4.0 * math.eps);
 }
