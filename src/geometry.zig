@@ -19,7 +19,7 @@ pub const Material = enum { diffuse, specular };
 
 pub const Object = struct {
     geom: GeometryType = undefined,
-    trfm: math.Mat4 = math.identity(),
+    trfm: math.Mat4 = math.makeIdentityTransform(),
     refl: math.Vec3 = .{ 1.0, 1.0, 1.0 },
     emit: math.Vec3 = .{ 0.0, 0.0, 0.0 },
     mtrl: Material = Material.diffuse,

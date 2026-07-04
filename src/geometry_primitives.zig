@@ -7,7 +7,6 @@ const sub = math.sub;
 const mul = math.mul;
 const div = math.div;
 const dot = math.dot;
-const abs = math.abs;
 const Vec3 = math.Vec3;
 const sdiv = math.sdiv;
 const sign = math.sign;
@@ -107,7 +106,7 @@ test "intersectRaySphere sphere behind ray origin" {
 fn intersectRayBoxSlab(ray: Ray, box: Box) struct { Vec3, Vec3 } {
     const ird: Vec3 = div(1.0, ray.d); // invserse ray direction
     const dt0: Vec3 = mul(ird, ray.o); // parametric distance to axis-orthogonal plane at 0
-    const bdc: Vec3 = mul(abs(ird), box.size); // box distance correction
+    const bdc: Vec3 = mul(@abs(ird), box.size); // box distance correction
     const atn: Vec3 = sub(mul(-1.0, dt0), bdc);
     const atf: Vec3 = add(mul(-1.0, dt0), bdc);
     return .{ atn, atf };

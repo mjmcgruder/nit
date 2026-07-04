@@ -260,7 +260,7 @@ pub fn readInput(
                 var object: *geom.Object = &scene.items[scene.items.len - 1];
 
                 if (object_map.get(key)) |setting| {
-                    var transform: m.Mat4 = m.identity();
+                    var transform: m.Mat4 = m.makeIdentityTransform();
 
                     switch (setting) {
                         .geometry => {
@@ -288,10 +288,10 @@ pub fn readInput(
                         },
                         .rotate => {
                             const r = try parseVec4(val);
-                            transform = m.rotateAboutAxis(.{ r[0], r[1], r[2] }, r[3]);
+                            transform = m.makeRotateTransform(.{ r[0], r[1], r[2] }, r[3]);
                         },
-                        .scale => transform = m.scale(try std.fmt.parseFloat(f32, val)),
-                        .translate => transform = m.translate(try parseVec3(val)),
+                        .scale => transform = m.makeScaleTransform(try std.fmt.parseFloat(f32, val)),
+                        .translate => transform = m.makeTranslateTransform(try parseVec3(val)),
                         .reflectance => object.refl = try parseVec3(val),
                         .emittance => object.emit = try parseVec3(val),
                         .material => object.mtrl = try parseEnum(geom.Material, val),
