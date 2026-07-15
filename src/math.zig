@@ -28,28 +28,24 @@ pub const eps: f32 = std.math.floatEps(f32);
 
 // type helpers
 
-pub fn makeVec3(src: Vec3c) Vec3 {
+pub inline fn makeVec3(src: Vec3c) Vec3 {
     return .{ src[0], src[1], src[2] };
 }
 
-pub fn makeVec3c(src: Vec3) Vec3c {
+pub inline fn makeVec3c(src: Vec3) Vec3c {
     return .{ src[0], src[1], src[2] };
 }
 
-pub fn toVec3(src: Vec4) Vec3 {
-    return .{ src[0], src[1], src[2] };
-}
-
-pub fn toVec4(src: Vec3) Vec4 {
-    return .{ src[0], src[1], src[2], 0.0 };
-}
-
-pub fn toHomogeneousPos(src: Vec3) Vec4 {
+pub inline fn toProjectivePos(src: Vec3) Vec4 {
     return .{ src[0], src[1], src[2], 1.0 };
 }
 
-pub fn toHomogeneousDir(src: Vec3) Vec4 {
-    return toVec4(src);
+pub inline fn toProjectiveDir(src: Vec3) Vec4 {
+    return .{ src[0], src[1], src[2], 0.0 };
+}
+
+pub inline fn toCartesian(src: Vec4) Vec3 {
+    return .{ src[0], src[1], src[2] };
 }
 
 // vector arithmetic

@@ -305,6 +305,10 @@ pub fn readInput(
         }
     } else |_| {} // end of file
 
+    for (scene.items) |*obj| {
+        obj.itfm = m.invertTransform(obj.trfm);
+    }
+
     return .{ .settings = settings, .scene = scene };
 }
 

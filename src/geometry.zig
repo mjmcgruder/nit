@@ -20,6 +20,7 @@ pub const Material = enum { diffuse, specular };
 pub const Object = struct {
     geom: GeometryType = undefined,
     trfm: math.Mat4 = math.makeIdentityTransform(),
+    itfm: math.Mat4 = math.makeIdentityTransform(),
     refl: math.Vec3 = .{ 1.0, 1.0, 1.0 },
     emit: math.Vec3 = .{ 0.0, 0.0, 0.0 },
     mtrl: Material = Material.diffuse,
@@ -33,12 +34,9 @@ pub const IntersectResult = struct {
 };
 
 pub fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
-    const itfm: math.Mat4 = math.invertTransform(obj.trfm);
-
-    const mrayd = math.toVec3(math.matvec4(itfm, math.toHomogeneousDir(wray.d)));
     const mray: prim.Ray = .{
-        .o = math.toVec3(math.matvec4(itfm, math.toHomogeneousPos(wray.o))),
-        .d = math.normalize(mrayd),
+        .o = math.toCartesian(math.matvec4(obj.itfm, math.toProjectivePos(wray.o))),
+        .d = math.toCartesian(math.matvec4(obj.itfm, math.toProjectiveDir(wray.d))),
     };
 
     var intersect_geom: ?prim.IntersectResult = switch (obj.geom) {
@@ -48,10 +46,9 @@ pub fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
     };
 
     if (intersect_geom) |*geom_result| {
-        geom_result.dist *= math.mag(wray.d) / math.mag(mrayd); // TODO: could this be achieved by not normalizing mrayd?
-        geom_result.norm = math.normalize(math.toVec3( // TODO: with this normalize, you could avoid normalizing in any individual intersection function?
-            math.matvec4(obj.trfm, math.toHomogeneousDir(geom_result.norm)),
-        ));
+        geom_result.norm = math.normalize( // <- necessary b/c transform could scale normal
+            math.toCartesian(math.matvec4(obj.trfm, math.toProjectiveDir(geom_result.norm))),
+        );
         return IntersectResult{
             .geom = geom_result.*,
             .refl = obj.refl,
