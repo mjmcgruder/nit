@@ -33,7 +33,7 @@ pub const IntersectResult = struct {
     mtrl: Material = Material.diffuse,
 };
 
-pub fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
+fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
     const mray: prim.Ray = .{
         .o = math.toCartesian(math.matvec4(obj.itfm, math.toProjectivePos(wray.o))),
         .d = math.toCartesian(math.matvec4(obj.itfm, math.toProjectiveDir(wray.d))),
@@ -58,4 +58,19 @@ pub fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
     } else {
         return null;
     }
+}
+
+pub fn intersectScene(ray: prim.Ray, scene: []const Object) ?IntersectResult {
+    const far = comptime std.math.floatMax(f32);
+
+    var intersect = IntersectResult{ .geom = .{ .dist = far } };
+    for (scene) |object| {
+        if (intersectRayObject(ray, object)) |result| {
+            if (result.geom.dist < intersect.geom.dist) {
+                intersect = result;
+            }
+        }
+    }
+
+    return if (intersect.geom.dist == far) null else intersect;
 }

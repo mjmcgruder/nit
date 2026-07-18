@@ -82,23 +82,6 @@ fn printRenderProgress(
     }
 }
 
-fn intersectScene(ro: m.Vec3, rd: m.Vec3, scene: []const geom.Object) ?geom.IntersectResult {
-    var intersect = geom.IntersectResult{
-        .geom = .{ .dist = std.math.floatMax(f32), .norm = undefined },
-        .refl = undefined,
-        .emit = undefined,
-        .mtrl = undefined,
-    };
-    for (scene) |object| {
-        if (geom.intersectRayObject(.{ .o = ro, .d = rd }, object)) |result| {
-            if (result.geom.dist < intersect.geom.dist) {
-                intersect = result;
-            }
-        }
-    }
-    return if (intersect.geom.dist == std.math.floatMax(f32)) null else intersect;
-}
-
 fn renderPixels(
     rays: []const m.Vec3,
     scene: []const geom.Object,
@@ -147,7 +130,7 @@ fn renderPixels(
             var ro: m.Vec3 = settings.camera_position;
             var rd: m.Vec3 = initial_ray.*;
             bounce_loop: while (stack_i < max_bounces) : (stack_i += 1) {
-                if (intersectScene(ro, rd, scene)) |intersect| {
+                if (geom.intersectScene(.{ .o = ro, .d = rd }, scene)) |intersect| {
                     var new_ray: m.Vec3 = undefined;
                     switch (intersect.mtrl) {
                         geom.Material.diffuse => {
