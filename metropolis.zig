@@ -5,6 +5,8 @@ const io = @import("src/io.zig");
 const smp = @import("src/sampling.zig");
 const rand = @import("src/random.zig");
 const geom = @import("src/geometry.zig");
+const rend = @import("src/rendering.zig");
+const prim = @import("src/geometry_primitives.zig");
 
 test {
     _ = m;
@@ -12,6 +14,8 @@ test {
     _ = smp;
     _ = geom;
 }
+
+const renderer = rend.Renderers.backward_path_tracing;
 
 var render_start: std.Io.Clock.Timestamp = undefined;
 const chunk_size: usize = 1 << 11;
@@ -40,7 +44,7 @@ fn dispatchRender(
             const chunk_start_current: usize = chunk_start;
             chunk_start = chunk_end;
             chunk_mutex.unlock(stdio);
-            try renderPixels(
+            try render(
                 rays,
                 scene,
                 settings,
@@ -54,13 +58,6 @@ fn dispatchRender(
         }
     }
 }
-
-const BounceNode = struct {
-    brdf: m.Vec3 = .{ 0.0, 0.0, 0.0 },
-    emit: m.Vec3 = .{ 0.0, 0.0, 0.0 },
-    c_th: f32 = 0.0,
-    prob: f32 = 1.0,
-};
 
 fn printRenderProgress(
     current_time: u64,
@@ -82,7 +79,7 @@ fn printRenderProgress(
     }
 }
 
-fn renderPixels(
+fn render(
     rays: []const m.Vec3,
     scene: []const geom.Object,
     settings: *const io.Settings,
@@ -93,14 +90,9 @@ fn renderPixels(
     stdio: std.Io,
     stdout: *std.Io.Writer,
 ) !void {
-    const max_bounces: usize = 1 << 3;
-    var bounce_stack: [max_bounces]BounceNode = undefined;
-    var stack_i: usize = undefined;
-
     var pixel_i: usize = begin_i;
     while (pixel_i < end_i) : (pixel_i += 1) {
         // count each pixel for output progress update purposes
-
         _ = @atomicRmw(
             usize,
             &finished_pixels,
@@ -110,89 +102,20 @@ fn renderPixels(
         );
 
         // occasionally print a progress update
-
         const current_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
         if (current_time - last_print_time > 100000000) {
             try printRenderProgress(current_time, frame_buffer.len, stdio, stdout);
         }
 
         // render
-
-        const initial_ray: *const m.Vec3 = &rays[pixel_i];
-        const pixel: *io.Pixel = &frame_buffer[pixel_i];
-
-        var sample_i: usize = 0;
-        var pixel_color: m.Vec3 = .{ 0.0, 0.0, 0.0 };
-        sample_loop: while (sample_i < settings.num_samples) : (sample_i += 1) {
-            stack_i = 0;
-
-            // build bounce stack
-            var ro: m.Vec3 = settings.camera_position;
-            var rd: m.Vec3 = initial_ray.*;
-            bounce_loop: while (stack_i < max_bounces) : (stack_i += 1) {
-                if (geom.intersectScene(.{ .o = ro, .d = rd }, scene)) |intersect| {
-                    var new_ray: m.Vec3 = undefined;
-                    switch (intersect.mtrl) {
-                        geom.Material.diffuse => {
-                            const sample: smp.BRDFSample =
-                                smp.sampleLambertianBRDF(intersect.geom.norm, rng);
-                            bounce_stack[stack_i] = BounceNode{
-                                .brdf = m.mul(intersect.refl, 1.0 / std.math.pi),
-                                .emit = intersect.emit,
-                                .c_th = sample.p * std.math.pi,
-                                .prob = sample.p,
-                            };
-                            new_ray = sample.dir;
-                        },
-                        geom.Material.specular => {
-                            const sample: smp.BRDFSample =
-                                smp.sampleSpecularBRDF(intersect.geom.norm, m.mul(rd, -1.0));
-                            bounce_stack[stack_i] = BounceNode{
-                                .brdf = m.mul(
-                                    intersect.refl,
-                                    m.sdiv(1.0, m.dot(sample.dir, intersect.geom.norm)),
-                                ),
-                                .emit = intersect.emit,
-                                .c_th = m.dot(sample.dir, intersect.geom.norm),
-                                .prob = sample.p,
-                            };
-                            new_ray = sample.dir;
-                        },
-                    }
-                    ro = m.add(
-                        m.add(ro, m.mul(rd, intersect.geom.dist)),
-                        m.mul(intersect.geom.norm, 1e-5),
-                    );
-                    rd = new_ray;
-                } else {
-                    if (stack_i == 0) {
-                        break :sample_loop;
-                    } else {
-                        break :bounce_loop;
-                    }
-                }
-            }
-
-            // accumulate incoming color by unwinding bounce stack
-            var incoming: m.Vec3 = .{ 0.0, 0.0, 0.0 }; // start black
-            while (stack_i > 0) {
-                stack_i -= 1;
-                const node: BounceNode = bounce_stack[stack_i];
-                incoming = m.add(
-                    node.emit,
-                    m.mul(m.mul(m.mul(node.brdf, incoming), node.c_th), m.sdiv(1.0, node.prob)),
-                );
-            }
-
-            // average sample color into pixel color
-            pixel_color = m.add(
-                pixel_color,
-                m.mul(incoming, 1.0 / @as(f32, @floatFromInt(settings.num_samples))),
-            );
-        }
+        const ray: prim.Ray = .{ .o = settings.camera_position, .d = rays[pixel_i] };
+        const pixel_color = switch (renderer) {
+            .depth => rend.renderDepth(ray, scene),
+            .backward_path_tracing => rend.renderWithBackwardPathTracing(ray, scene, settings.num_samples, rng),
+        };
 
         // set final color value
-
+        const pixel: *io.Pixel = &frame_buffer[pixel_i];
         std.debug.assert(!std.math.isNan(pixel_color[0]));
         pixel.r = @intFromFloat(m.clamp(pixel_color[0], 0.0, 1.0) * 255.0);
         std.debug.assert(!std.math.isNan(pixel_color[1]));
