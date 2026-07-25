@@ -49,34 +49,31 @@ pub fn renderWithBackwardPathTracing(
         var rd: Vec3 = camera_ray.d;
         bounce_loop: while (stack_i < max_bounces) : (stack_i += 1) {
             if (geom.intersectScene(.{ .o = ro, .d = rd }, scene)) |intersect| {
-                var new_ray: Vec3 = undefined;
+                const dist = intersect.geom.dist;
+                const norm = intersect.geom.norm;
+                ro = add(add(ro, mul(rd, dist)), mul(norm, 1e-5));
                 switch (intersect.mtrl) {
                     geom.Material.diffuse => {
-                        const sample: samp.BRDFSample = samp.sampleLambertianBRDF(intersect.geom.norm, rng);
+                        const sample: samp.BRDFSample = samp.sampleLambertianBRDF(norm, rng);
                         bounce_stack[stack_i] = BounceNode{
                             .brdf = mul(intersect.refl, 1.0 / std.math.pi),
                             .emit = intersect.emit,
                             .c_th = sample.p * std.math.pi,
                             .prob = sample.p,
                         };
-                        new_ray = sample.dir;
+                        rd = sample.dir;
                     },
                     geom.Material.specular => {
-                        const sample: samp.BRDFSample = samp.sampleSpecularBRDF(intersect.geom.norm, mul(rd, -1.0));
+                        const sample: samp.BRDFSample = samp.sampleSpecularBRDF(norm, mul(rd, -1.0));
                         bounce_stack[stack_i] = BounceNode{
-                            .brdf = mul(
-                                intersect.refl,
-                                math.sdiv(1.0, dot(sample.dir, intersect.geom.norm)),
-                            ),
+                            .brdf = mul(intersect.refl, math.sdiv(1.0, dot(sample.dir, norm))),
                             .emit = intersect.emit,
-                            .c_th = dot(sample.dir, intersect.geom.norm),
+                            .c_th = dot(sample.dir, norm),
                             .prob = sample.p,
                         };
-                        new_ray = sample.dir;
+                        rd = sample.dir;
                     },
                 }
-                ro = add(add(ro, mul(rd, intersect.geom.dist)), mul(intersect.geom.norm, 1e-5));
-                rd = new_ray;
             } else {
                 if (stack_i == 0) {
                     break :sample_loop;
