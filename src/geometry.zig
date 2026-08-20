@@ -40,8 +40,8 @@ fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
     };
 
     var intersect_geom: ?prim.IntersectResult = switch (obj.geom) {
-        .sphere => |geom_sphere| prim.intersectRaySphere(mray, geom_sphere),
-        .box => |geom_box| prim.intersectRayBox(mray, geom_box),
+        .sphere => |geom_sphere| prim.intersectRaySphere(mray, geom_sphere.r),
+        .box => |geom_box| prim.intersectRayBox(mray, geom_box.size()),
         .mesh => |geom_mesh| mesh.intersectRayMesh(mray, geom_mesh),
     };
 

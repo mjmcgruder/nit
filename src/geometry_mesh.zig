@@ -32,32 +32,7 @@ const BoxCenterExtent = struct {
     extent: Vec3c, // this is a "half extent"
 };
 
-const Box = struct {
-    min: Vec3c = @splat(std.math.floatMax(f32)),
-    max: Vec3c = @splat(-std.math.floatMax(f32)),
-    fn grow(self: *Box, point: Vec3c) void {
-        inline for (0..3) |dim| {
-            if (point[dim] < self.min[dim]) self.min[dim] = point[dim];
-            if (point[dim] > self.max[dim]) self.max[dim] = point[dim];
-        }
-    }
-    fn getCenter(self: Box) Vec3 {
-        return .{
-            0.5 * (self.max[0] + self.min[0]),
-            0.5 * (self.max[1] + self.min[1]),
-            0.5 * (self.max[2] + self.min[2]),
-        };
-    }
-    fn getExtent(self: Box) Vec3 {
-        return .{
-            self.max[0] - self.min[0],
-            self.max[1] - self.min[1],
-            self.max[2] - self.min[2],
-        };
-    }
-};
-
-fn toCenterExtent(box: Box) BoxCenterExtent {
+fn toCenterExtent(box: prim.Box) BoxCenterExtent {
     var boxCenterExtent: BoxCenterExtent = undefined;
     inline for (0..3) |di| {
         boxCenterExtent.center[di] = 0.5 * (box.max[di] + box.min[di]);
@@ -66,8 +41,8 @@ fn toCenterExtent(box: Box) BoxCenterExtent {
     return boxCenterExtent;
 }
 
-fn findBoundingVolume(mesh: *Mesh, tri_indices: []u32) Box {
-    var box = Box{};
+fn findBoundingVolume(mesh: *Mesh, tri_indices: []u32) prim.Box {
+    var box = prim.Box{};
     for (tri_indices) |ti| {
         const index_offset = 3 * ti;
         for (0..3) |vi| {
@@ -77,7 +52,7 @@ fn findBoundingVolume(mesh: *Mesh, tri_indices: []u32) Box {
     return box;
 }
 
-fn findSurfaceArea(box: Box) f32 {
+fn findSurfaceArea(box: prim.Box) f32 {
     const dx = box.max[0] - box.min[0];
     const dy = box.max[1] - box.min[1];
     const dz = box.max[2] - box.min[2];
@@ -179,11 +154,11 @@ pub fn buildBVH(
         var split_pos: f32 = node.bbox.center[split_dim];
         var split_countL: u32 = 0;
         var split_countR: u32 = 0;
-        var split_boxL: Box = .{};
-        var split_boxR: Box = .{};
+        var split_boxL: prim.Box = .{};
+        var split_boxR: prim.Box = .{};
 
         const Bin = struct {
-            box: Box = .{},
+            box: prim.Box = .{},
             ntri: u32 = 0,
         };
 
@@ -211,13 +186,13 @@ pub fn buildBVH(
             // find split contents
             var countsL: [num_bins - 1]u32 = @splat(0);
             var countsR: [num_bins - 1]u32 = @splat(0);
-            var boxesL: [num_bins - 1]Box = @splat(Box{});
-            var boxesR: [num_bins - 1]Box = @splat(Box{});
+            var boxesL: [num_bins - 1]prim.Box = @splat(prim.Box{});
+            var boxesR: [num_bins - 1]prim.Box = @splat(prim.Box{});
             {
                 var countL: u32 = 0;
                 var countR: u32 = 0;
-                var boxL: Box = .{};
-                var boxR: Box = .{};
+                var boxL: prim.Box = .{};
+                var boxR: prim.Box = .{};
                 for (0..(num_bins - 1)) |fsi| { // forward split iterator
                     if (bins[fsi].ntri > 0) {
                         countL += bins[fsi].ntri;
@@ -336,7 +311,7 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
 
     if (prim.intersectRayBoxDist(
         .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(mesh.bvh.nodes[0].bbox.center)) },
-        .{ .size = math.makeVec3(mesh.bvh.nodes[0].bbox.extent) },
+        math.makeVec3(mesh.bvh.nodes[0].bbox.extent),
     )) |root_dist| {
         traversal_stack[0].indx = 0;
         traversal_stack[0].dist = root_dist;
@@ -360,11 +335,11 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
 
             const dist0: f32 = prim.intersectRayBoxDist(
                 .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child0.bbox.center)) },
-                .{ .size = child0.bbox.extent },
+                child0.bbox.extent,
             ) orelse std.math.floatMax(f32);
             const dist1: f32 = prim.intersectRayBoxDist(
                 .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child1.bbox.center)) },
-                .{ .size = child1.bbox.extent },
+                child1.bbox.extent,
             ) orelse std.math.floatMax(f32);
 
             var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = dist0 };

@@ -265,8 +265,16 @@ pub fn readInput(
                     switch (setting) {
                         .geometry => {
                             switch (object.geom) {
-                                .sphere => |*value| value.*.r = try std.fmt.parseFloat(f32, val),
-                                .box => |*value| value.*.size = try parseVec3(val),
+                                .sphere => |*value| value.* = blk: {
+                                    break :blk .{
+                                        .c = @splat(0.0),
+                                        .r = try std.fmt.parseFloat(f32, val),
+                                    };
+                                },
+                                .box => |*value| value.* = blk: {
+                                    const size: m.Vec3 = try parseVec3(val);
+                                    break :blk .{.min = m.mul(size, -1.0), .max = size};
+                                },
                                 .mesh => |*value| value.* = blk: {
                                     const raw_mesh = try readASCIISTL(val, alloc_work, io, stdout);
                                     try stdout.print("Deduplicating mesh vertices... ", .{});
