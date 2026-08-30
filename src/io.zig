@@ -47,45 +47,6 @@ const ParsingError = error{
     NotImplemented,
 };
 
-fn seekWhitespace(str: []const u8, start: usize) usize {
-    var head: usize = start;
-    while (head < str.len and !std.ascii.isWhitespace(str[head])) : (head += 1) {}
-    return head;
-}
-fn seekPastWhitespace(str: []const u8, start: usize) usize {
-    var head: usize = start;
-    while (head < str.len and std.ascii.isWhitespace(str[head])) : (head += 1) {}
-    return head;
-}
-fn seekCharacter(str: []const u8, start: usize, char: u8) usize {
-    var head: usize = start;
-    while (head < str.len and str[head] != char) : (head += 1) {}
-    return head;
-}
-fn seekNext(str: []const u8, start: usize) usize {
-    return if (start + 1 < str.len) start + 1 else start;
-}
-
-fn skipWhiteSpace(str: []u8) []u8 {
-    return str[seekPastWhitespace(str, 0)..];
-}
-
-fn getNextWord(str: []u8, word: *[]u8) []u8 {
-    const trim: []u8 = skipWhiteSpace(str);
-    const word_end = seekWhitespace(trim, 0);
-    word.* = trim[0..word_end];
-    return trim[word_end..];
-}
-
-fn parseKeyVal(str: []u8, key: *[]u8, val: *[]u8) !void {
-    var word: []u8 = &.{};
-    var trim: []u8 = str;
-    trim = getNextWord(trim, key);
-    trim = getNextWord(trim, &word);
-    if (!std.mem.eql(u8, word, "=")) return ParsingError.FormatError;
-    trim = getNextWord(trim, val);
-}
-
 fn parseEnum(enum_type: type, string: []const u8) !enum_type {
     inline for (@typeInfo(enum_type).@"enum".fields) |field| {
         if (std.mem.eql(u8, string, field.name)) {
@@ -96,18 +57,11 @@ fn parseEnum(enum_type: type, string: []const u8) !enum_type {
 }
 
 fn parseVec3(str: []const u8) !m.Vec3 {
-    const begin_elem0 = seekPastWhitespace(str, 0);
-    const end_elem0 = seekCharacter(str, begin_elem0, ',');
-    const elem0: []const u8 = str[begin_elem0..end_elem0];
-    if (elem0.len == 0) return ParsingError.FormatError;
-    const begin_elem1 = seekNext(str, end_elem0);
-    const end_elem1 = seekCharacter(str, begin_elem1, ',');
-    const elem1: []const u8 = str[begin_elem1..end_elem1];
-    if (elem1.len == 0) return ParsingError.FormatError;
-    const begin_elem2 = seekNext(str, end_elem1);
-    const end_elem2 = seekWhitespace(str, begin_elem2);
-    const elem2: []const u8 = str[begin_elem2..end_elem2];
-    if (elem2.len == 0) return ParsingError.FormatError;
+    var it = std.mem.splitScalar(u8, str, ',');
+    const elem0 = it.next() orelse return ParsingError.FormatError;
+    const elem1 = it.next() orelse return ParsingError.FormatError;
+    const elem2 = it.next() orelse return ParsingError.FormatError;
+    if (it.next() != null) return ParsingError.FormatError;
     return .{
         try std.fmt.parseFloat(f32, elem0),
         try std.fmt.parseFloat(f32, elem1),
@@ -116,22 +70,12 @@ fn parseVec3(str: []const u8) !m.Vec3 {
 }
 
 fn parseVec4(str: []const u8) !m.Vec4 {
-    const begin_elem0 = seekPastWhitespace(str, 0);
-    const end_elem0 = seekCharacter(str, begin_elem0, ',');
-    const elem0: []const u8 = str[begin_elem0..end_elem0];
-    if (elem0.len == 0) return ParsingError.FormatError;
-    const begin_elem1 = seekNext(str, end_elem0);
-    const end_elem1 = seekCharacter(str, begin_elem1, ',');
-    const elem1: []const u8 = str[begin_elem1..end_elem1];
-    if (elem1.len == 0) return ParsingError.FormatError;
-    const begin_elem2 = seekNext(str, end_elem1);
-    const end_elem2 = seekCharacter(str, begin_elem2, ',');
-    const elem2: []const u8 = str[begin_elem2..end_elem2];
-    if (elem2.len == 0) return ParsingError.FormatError;
-    const begin_elem3 = seekNext(str, end_elem2);
-    const end_elem3 = seekWhitespace(str, begin_elem3);
-    const elem3: []const u8 = str[begin_elem3..end_elem3];
-    if (elem3.len == 0) return ParsingError.FormatError;
+    var it = std.mem.splitScalar(u8, str, ',');
+    const elem0 = it.next() orelse return ParsingError.FormatError;
+    const elem1 = it.next() orelse return ParsingError.FormatError;
+    const elem2 = it.next() orelse return ParsingError.FormatError;
+    const elem3 = it.next() orelse return ParsingError.FormatError;
+    if (it.next() != null) return ParsingError.FormatError;
     return .{
         try std.fmt.parseFloat(f32, elem0),
         try std.fmt.parseFloat(f32, elem1),
@@ -174,6 +118,8 @@ const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).i
     .{ "mesh", .mesh },
 });
 
+const whitespace: []const u8 = " \t\r\n";
+
 pub fn readInput(
     rel_path: []const u8,
     alloc_main: std.mem.Allocator,
@@ -196,18 +142,15 @@ pub fn readInput(
     const reader = &file_reader.interface;
 
     var line_num: usize = 1;
-    var trim: []u8 = &.{};
-    var word: []u8 = &.{};
 
-    line_loop: while (reader.takeDelimiterInclusive('\n')) |line| : (line_num += 1) {
+    line_loop: while (try reader.takeDelimiter('\n')) |line| : (line_num += 1) {
         errdefer std.log.err("parsing error at line {}", .{line_num});
 
-        trim = skipWhiteSpace(line);
+        var tok = std.mem.tokenizeAny(u8, line, whitespace);
+        const word = tok.next() orelse continue :line_loop; // skip blank lines
 
         // skip comment lines
-        if (trim.len == 0 or trim[0] == '#') continue;
-
-        _ = getNextWord(trim, &word);
+        if (word[0] == '#') continue :line_loop;
 
         // change mode if necessary
         if (std.mem.eql(u8, word, "end")) {
@@ -216,10 +159,9 @@ pub fn readInput(
         }
         if (std.mem.eql(u8, word, "object")) {
             mode = .object;
-            trim = getNextWord(trim, &word);
-            trim = getNextWord(trim, &word);
+            const type_word = tok.next() orelse return ParsingError.FormatError;
 
-            if (geometry_type_map.get(word)) |geom_type| {
+            if (geometry_type_map.get(type_word)) |geom_type| {
                 var geometry = geom.GeometryType{ .sphere = .{} };
                 switch (geom_type) {
                     .sphere => geometry = geom.GeometryType{ .sphere = .{} },
@@ -234,9 +176,10 @@ pub fn readInput(
         }
 
         // parse key-value pairs
-        var key: []u8 = &.{};
-        var val: []u8 = &.{};
-        try parseKeyVal(trim, &key, &val);
+        const key = word;
+        const eq = tok.next() orelse return ParsingError.FormatError;
+        if (!std.mem.eql(u8, eq, "=")) return ParsingError.FormatError;
+        const val = tok.next() orelse return ParsingError.FormatError;
 
         // assign info
         switch (mode) {
@@ -311,7 +254,7 @@ pub fn readInput(
                 }
             },
         }
-    } else |_| {} // end of file
+    }
 
     for (scene.items) |*obj| {
         obj.itfm = m.invertTransform(obj.trfm);
@@ -335,8 +278,6 @@ pub fn readASCIISTL(
     io: std.Io,
     stdout: *std.Io.Writer,
 ) !geom_mesh.Mesh {
-    const whitespace: []const u8 = " \t\r\n";
-
     try stdout.print("Reading ASCII STL file \"{s}\"... ", .{rel_path});
 
     var read_buffer: [1 << 18]u8 = undefined;
