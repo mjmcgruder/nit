@@ -273,7 +273,7 @@ pub fn readInput(
                                 },
                                 .box => |*value| value.* = blk: {
                                     const size: m.Vec3 = try parseVec3(val);
-                                    break :blk .{.min = m.mul(size, -1.0), .max = size};
+                                    break :blk .{ .min = m.mul(size, -1.0), .max = size };
                                 },
                                 .mesh => |*value| value.* = blk: {
                                     const raw_mesh = try readASCIISTL(val, alloc_work, io, stdout);
@@ -451,7 +451,7 @@ test "readInput --- runs" {
     try std.testing.expectEqual(scene[0].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[0].mtrl, geom.Material.specular);
 
-    try std.testing.expectEqual(scene[1].geom.box.size, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
+    try std.testing.expectEqual(scene[1].geom.box.size(), @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
     try std.testing.expectEqual(scene[1].trfm, @as(m.Mat4, .{
         .{ 0.08047379, -0.031061722, 0.050587934, 0 },
         .{ 0.050587934, 0.08047379, -0.031061722, 0 },

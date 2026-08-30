@@ -77,8 +77,7 @@ pub fn intersectRaySphere(ray: Ray, r: f32) ?IntersectResult {
 
 test "intersectRaySphere sphere ahead" {
     const ray: Ray = .{ .o = .{ -2.0, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
-    const sphere: Sphere = .{ .r = 1.0 };
-    if (intersectRaySphere(ray, sphere)) |result| {
+    if (intersectRaySphere(ray, 1.0)) |result| {
         try std.testing.expectApproxEqAbs(1.0, result.dist, 4 * math.eps);
         try std.testing.expectApproxEqAbs(-1.0, result.norm[0], 4 * math.eps);
         try std.testing.expectApproxEqAbs(0.0, result.norm[1], 4 * math.eps);
@@ -90,8 +89,7 @@ test "intersectRaySphere sphere ahead" {
 
 test "intersectRaySphere ray origin inside sphere" {
     const ray: Ray = .{ .o = .{ -0.5, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
-    const sphere: Sphere = .{ .r = 1.0 };
-    if (intersectRaySphere(ray, sphere)) |result| {
+    if (intersectRaySphere(ray, 1.0)) |result| {
         try std.testing.expectApproxEqAbs(1.5, result.dist, 4 * math.eps);
         try std.testing.expectApproxEqAbs(-1.0, result.norm[0], 4 * math.eps);
         try std.testing.expectApproxEqAbs(0.0, result.norm[1], 4 * math.eps);
@@ -103,8 +101,7 @@ test "intersectRaySphere ray origin inside sphere" {
 
 test "intersectRaySphere sphere behind ray origin" {
     const ray: Ray = .{ .o = .{ 1.5, 0.0, 0.0 }, .d = .{ 1.0, 0.0, 0.0 } };
-    const sphere: Sphere = .{ .r = 1.0 };
-    if (intersectRaySphere(ray, sphere)) |_| {
+    if (intersectRaySphere(ray, 1.0)) |_| {
         try std.testing.expect(false);
     } else {
         try std.testing.expect(true);
@@ -115,8 +112,8 @@ fn intersectRayBoxSlab(ray: Ray, size: Vec3) struct { Vec3, Vec3 } {
     const ird: Vec3 = div(1.0, ray.d); // invserse ray direction
     const dt0: Vec3 = mul(ird, ray.o); // parametric distance to axis-orthogonal plane at 0
     const bdc: Vec3 = mul(@abs(ird), size); // box distance correction
-    const atn: Vec3 = sub(mul(-1.0, dt0), bdc);  // all near parameters
-    const atf: Vec3 = add(mul(-1.0, dt0), bdc);  // all far parameters
+    const atn: Vec3 = sub(mul(-1.0, dt0), bdc); // all near parameters
+    const atf: Vec3 = add(mul(-1.0, dt0), bdc); // all far parameters
     return .{ atn, atf };
 }
 
