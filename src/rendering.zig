@@ -16,7 +16,7 @@ pub const Renderers = enum {
     backward_path_tracing,
 };
 
-pub fn renderDepth(camera_ray: prim.Ray, scene: []const geom.Object) Vec3 {
+pub fn renderDepth(camera_ray: prim.Ray, scene: geom.Scene) Vec3 {
     const far = geom.IntersectResult{ .geom = .{ .dist = std.math.floatMax(f32) } };
     const d: f32 = (geom.intersectScene(camera_ray, scene) orelse far).geom.dist;
     return @splat(1.0 / (d + 1.0));
@@ -24,7 +24,7 @@ pub fn renderDepth(camera_ray: prim.Ray, scene: []const geom.Object) Vec3 {
 
 pub fn renderWithBackwardPathTracing(
     camera_ray: prim.Ray,
-    scene: []const geom.Object,
+    scene: geom.Scene,
     num_samples: usize,
     rng: *rand.PCGHash,
 ) Vec3 {

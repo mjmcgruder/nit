@@ -30,7 +30,7 @@ var finished_pixels: usize = 0;
 
 fn dispatchRender(
     rays: []const m.Vec3,
-    scene: []const geom.Object,
+    scene: geom.Scene,
     settings: *const io.Settings,
     thread_num: usize,
     frame_buffer: []io.Pixel,
@@ -81,7 +81,7 @@ fn printRenderProgress(
 
 fn render(
     rays: []const m.Vec3,
-    scene: []const geom.Object,
+    scene: geom.Scene,
     settings: *const io.Settings,
     rng: *rand.PCGHash,
     begin_i: usize,
@@ -181,10 +181,20 @@ pub fn main(init: std.process.Init.Minimal) !void {
         return;
     }
 
-    const input = try io.readInput(args[1], alloc_main, alloc_work, stdio, stdout);
+    const settings: io.Settings, const objects: []geom.Object =
+        try io.readInput(args[1], alloc_main, alloc_work, stdio, stdout);
     _ = alloc_work_instance.reset(.free_all);
-    const settings: io.Settings = input.settings;
-    const scene: []geom.Object = input.scene.items;
+
+    const scene = scene_light_sort: {
+        var scene = geom.Scene{ .objects = objects, .num_lights = 0 };
+        for (0..objects.len) |oi| {
+            if (m.mag(objects[oi].emit) > 0.0) {
+                std.mem.swap(geom.Object, &scene.objects[scene.num_lights], &scene.objects[oi]);
+                scene.num_lights += 1;
+            }
+        }
+        break :scene_light_sort scene;
+    };
 
     // render
 

@@ -126,11 +126,11 @@ pub fn readInput(
     alloc_work: std.mem.Allocator,
     io: std.Io,
     stdout: *std.Io.Writer,
-) !struct { settings: Settings, scene: std.ArrayList(geom.Object) } {
+) !struct { Settings, []geom.Object } {
     try stdout.print("Reading input file \"{s}\".\n", .{rel_path});
 
     var settings: Settings = .{};
-    var scene: std.ArrayList(geom.Object) = .empty;
+    var objects: std.ArrayList(geom.Object) = .empty;
 
     var mode: InputParseMode = .normal;
 
@@ -168,7 +168,7 @@ pub fn readInput(
                     .box => geometry = geom.GeometryType{ .box = .{} },
                     .mesh => geometry = geom.GeometryType{ .mesh = .{} },
                 }
-                try scene.append(alloc_main, geom.Object{ .geom = geometry });
+                try objects.append(alloc_main, geom.Object{ .geom = geometry });
                 continue :line_loop;
             } else {
                 return ParsingError.UnknownObjectType;
@@ -200,7 +200,7 @@ pub fn readInput(
                 }
             },
             .object => {
-                var object: *geom.Object = &scene.items[scene.items.len - 1];
+                var object: *geom.Object = &objects.items[objects.items.len - 1];
 
                 if (object_map.get(key)) |setting| {
                     var transform: m.Mat4 = m.makeIdentityTransform();
@@ -256,11 +256,11 @@ pub fn readInput(
         }
     }
 
-    for (scene.items) |*obj| {
+    for (objects.items) |*obj| {
         obj.itfm = m.invertTransform(obj.trfm);
     }
 
-    return .{ .settings = settings, .scene = scene };
+    return .{ settings, objects.items };
 }
 
 const STLReadError = error{ // TODO: possibly generalize this
@@ -367,9 +367,8 @@ test "readInput --- runs" {
     defer alloc_work_instance.deinit();
     const alloc_work: std.mem.Allocator = alloc_work_instance.allocator();
 
-    const input = try readInput("src/test_data/input.txt", alloc_main, alloc_work, io, stdout);
+    const settings, const scene = try readInput("src/test_data/input.txt", alloc_main, alloc_work, io, stdout);
 
-    const settings = input.settings;
     try std.testing.expectEqual(settings.thread_count, 8);
     try std.testing.expectEqual(settings.num_samples, 1024);
     try std.testing.expectEqual(settings.window_w, 1920);
@@ -378,8 +377,6 @@ test "readInput --- runs" {
     try std.testing.expectEqual(settings.target_position, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(settings.up_vector, @as(m.Vec3, .{ 0.0, 1.0, 0.0 }));
     try std.testing.expectEqual(settings.field_of_view, 90.0);
-
-    const scene = input.scene.items;
 
     try std.testing.expectEqual(scene[0].geom.sphere.r, 0.1);
     try std.testing.expectEqual(scene[0].trfm, @as(m.Mat4, .{

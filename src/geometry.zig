@@ -26,6 +26,11 @@ pub const Object = struct {
     mtrl: Material = Material.diffuse,
 };
 
+pub const Scene = struct {
+    objects: []Object = undefined,
+    num_lights: usize = 0,
+};
+
 pub const IntersectResult = struct {
     geom: prim.IntersectResult = .{},
     refl: math.Vec3 = .{ 0.0, 0.0, 0.0 },
@@ -60,11 +65,11 @@ fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
     }
 }
 
-pub fn intersectScene(ray: prim.Ray, scene: []const Object) ?IntersectResult {
+pub fn intersectScene(ray: prim.Ray, scene: Scene) ?IntersectResult {
     const far = comptime std.math.floatMax(f32);
 
     var intersect = IntersectResult{ .geom = .{ .dist = far } };
-    for (scene) |object| {
+    for (scene.objects) |object| {
         if (intersectRayObject(ray, object)) |result| {
             if (result.geom.dist < intersect.geom.dist) {
                 intersect = result;
