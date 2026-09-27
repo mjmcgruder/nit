@@ -1,7 +1,9 @@
 const std = @import("std");
 
 const math = @import("math.zig");
-const random = @import("random.zig");
+const rand = @import("random.zig");
+const geom = @import("geometry.zig");
+const prim = @import("geometry_primitives.zig");
 
 const add = math.add;
 const sub = math.sub;
@@ -39,16 +41,94 @@ test "buildLocalCoordinateAxes --- is normalized" {
     try std.testing.expectApproxEqRel(1.0, mag(z), 4.0 * math.eps);
 }
 
-pub const BRDFSample = struct {
+pub const Sample = struct {
     dir: Vec3,
     p: f32,
 };
+
+inline fn sampleCone(cos_angle: f32, rng: *rand.PCGHash) Sample {
+    const tpi: f32 = comptime 2.0 * std.math.pi;
+    const omc: f32 = 1.0 - cos_angle;
+    const phi: f32 = tpi * rng.float32();
+    const cth: f32 = 1.0 - (rng.float32() * omc);
+    const sth: f32 = @sqrt(@max(1.0 - cth * cth, 0.0));
+    const cph: f32 = @cos(phi);
+    const sph: f32 = @sin(phi);
+    return .{ .dir = .{ sth * cph, sth * sph, cth }, .p = 1.0 / (tpi * omc) };
+}
+
+pub fn sampleSphereLight(p: Vec3, s: prim.Sphere, rng: *rand.PCGHash) Sample {
+    const ptoc: Vec3 = sub(s.c, p);
+    const samp: Sample = sampleCone(@sqrt(@max(1.0 - ((s.r * s.r) / dot(ptoc, ptoc)), 0.0)), rng);
+    const x, const y, const z = buildCoordinateAxes(normalize(ptoc));
+    return .{
+        .dir = add(add(mul(x, samp.dir[0]), mul(y, samp.dir[1])), mul(z, samp.dir[2])),
+        .p = samp.p,
+    };
+}
+
+test "sampleSphereLight --- unit direction, bounded, no polar bias" {
+    var rng = rand.PCGHash{ .state = @as(u32, @intCast(42)) };
+
+    const p = Vec3{ 0.1, 0.2, 0.3 };
+    const s = prim.Sphere{ .c = .{ 2.0, 2.2, 0.3 }, .r = 1.2 };
+
+    const ptoc = sub(s.c, p);
+    const cntr = normalize(ptoc);
+    const sint_max = s.r / mag(ptoc);
+    const cost_max = @sqrt(1.0 - sint_max * sint_max);
+    const cost_cut = (1.0 + cost_max) / 2.0;
+
+    var nlo: usize = 0;
+    var nhi: usize = 0;
+    for (1..(1 << 10)) |_| {
+        const samp: Sample = sampleSphereLight(p, s, &rng);
+        try std.testing.expectApproxEqRel(1.0, mag(samp.dir), 4.0 * math.eps);
+        const cost: f32 = dot(cntr, samp.dir);
+        try std.testing.expect(cost > cost_max);
+        if (cost < cost_cut) {
+            nlo += 1;
+        } else {
+            nhi += 1;
+        }
+    }
+    const hifrac = @as(f32, @floatFromInt(nhi)) / @as(f32, @floatFromInt(nlo + nhi));
+    try std.testing.expectApproxEqRel(0.5, hifrac, 0.04);
+}
+
+/// Samples the set of light sources in the scene.
+/// This function constructs a continuous probability distribution from a discrete distribution over
+/// the light sources (evenly weighted at the moment) and a continuous probability distribution over
+/// each light source. Notice that discrete and continuous distributions compose nicely since each
+/// discrete probability must be less than 1 and the collection sums to one. This turns into a
+/// weighted average of continuous distributions (which each integrate to one).
+pub fn sampleLights(
+    p: Vec3,
+    scene: geom.Scene,
+    rng: *rand.PCGHash,
+) ?struct { Sample, geom.Object } {
+    const light: geom.Object = scene.objects[rng.uint32() % @as(u32, @intCast(scene.num_lights))];
+    const mPosition = math.transformPos(p, light.itfm);
+
+    const one_light_sample: Sample = switch (light.geom) {
+        .sphere => |sphere| sampleSphereLight(mPosition, sphere, rng),
+        .mesh => null,
+        .box => null,
+    } orelse return null;
+
+    const all_light_sample = Sample{
+        .dir = math.transformDir(one_light_sample.dir, light.trfm),
+        .p = one_light_sample.p / @as(f32, @floatFromInt(scene.num_lights)),
+    };
+
+    return .{ all_light_sample, light };
+}
 
 /// Cosine-weighted hemisphere sampling using Malley's method... sortof.
 /// Really this function samples the light transport equation integrand assuming a Lambertian BRDF
 /// and constant incoming radiance.
 /// NOTE: The input normal vector MUST be normalized for correct results.
-pub fn sampleLambertianBRDF(n: Vec3, rng: *random.PCGHash) BRDFSample {
+pub fn sampleLambertianBRDF(n: Vec3, rng: *rand.PCGHash) Sample {
     std.debug.assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
     const r: f32 = @sqrt(rng.float32());
     const t: f32 = 2.0 * std.math.pi * rng.float32();
@@ -61,7 +141,7 @@ pub fn sampleLambertianBRDF(n: Vec3, rng: *random.PCGHash) BRDFSample {
 }
 
 test "sampleLambertianBRDF --- is cosine weighted" {
-    var rng = random.PCGHash{ .state = @as(u32, @intCast(42)) };
+    var rng = rand.PCGHash{ .state = @as(u32, @intCast(42)) };
     var nlo: usize = 0;
     var nhi: usize = 0;
     for (1..(1 << 10)) |_| {
@@ -74,7 +154,7 @@ test "sampleLambertianBRDF --- is cosine weighted" {
 
 /// Computes specular reflection given a normal vector, and a vector "w" pointing toward the light
 /// source (this is the opposite of the light's travel direction).
-pub fn sampleSpecularBRDF(n: Vec3, w: Vec3) BRDFSample {
+pub fn sampleSpecularBRDF(n: Vec3, w: Vec3) Sample {
     return .{ .dir = normalize(sub(mul(2.0, mul(dot(n, w), n)), w)), .p = 1.0 };
 }
 

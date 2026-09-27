@@ -2,9 +2,11 @@ const std = @import("std");
 
 const m = @import("math.zig");
 const geom = @import("geometry.zig");
+const rend = @import("rendering.zig");
 const geom_mesh = @import("geometry_mesh.zig");
 
 pub const Settings = struct {
+    renderer: rend.Renderers = .backward_path_tracing,
     thread_count: usize = 8,
     num_samples: usize = 1 << 0,
     window_w: usize = 1920,
@@ -99,6 +101,7 @@ const settings_map = std.StaticStringMap(SettingsEnum).initComptime(.{
     .{ "target_position", .target_position },
     .{ "up_vector", .up_vector },
     .{ "horizontal_fov", .field_of_view },
+    .{ "renderer", .renderer },
 });
 
 const ObjectSettingsEnum = enum { geometry, scale, rotate, translate, reflectance, emittance, material };
@@ -116,6 +119,12 @@ const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).i
     .{ "sphere", .sphere },
     .{ "box", .box },
     .{ "mesh", .mesh },
+});
+
+const renderer_map = std.StaticStringMap(rend.Renderers).initComptime(.{
+    .{ "depth", .depth },
+    .{ "direct", .direct_lighting },
+    .{ "path_tracing", .backward_path_tracing },
 });
 
 const whitespace: []const u8 = " \t\r\n";
@@ -186,6 +195,7 @@ pub fn readInput(
             .normal => {
                 if (settings_map.get(key)) |setting| {
                     switch (setting) {
+                        .renderer => settings.renderer = renderer_map.get(val) orelse return ParsingError.UnknownEnumValue,
                         .thread_count => settings.thread_count = try std.fmt.parseInt(usize, val, 10),
                         .num_samples => settings.num_samples = try std.fmt.parseInt(usize, val, 10),
                         .window_w => settings.window_w = try std.fmt.parseInt(usize, val, 10),
@@ -369,6 +379,7 @@ test "readInput --- runs" {
 
     const settings, const scene = try readInput("src/test_data/input.txt", alloc_main, alloc_work, io, stdout);
 
+    try std.testing.expectEqual(settings.renderer, rend.Renderers.depth);
     try std.testing.expectEqual(settings.thread_count, 8);
     try std.testing.expectEqual(settings.num_samples, 1024);
     try std.testing.expectEqual(settings.window_w, 1920);

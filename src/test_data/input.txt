@@ -1,5 +1,6 @@
 # this is a comment
 
+renderer        = depth
 num_threads     = 8
 num_samples     = 1024
 window_width    = 1920

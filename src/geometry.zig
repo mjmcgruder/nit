@@ -27,7 +27,7 @@ pub const Object = struct {
 };
 
 pub const Scene = struct {
-    objects: []Object = undefined,
+    objects: []const Object = undefined,
     num_lights: usize = 0,
 };
 
@@ -40,8 +40,8 @@ pub const IntersectResult = struct {
 
 fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
     const mray: prim.Ray = .{
-        .o = math.toCartesian(math.matvec4(obj.itfm, math.toProjectivePos(wray.o))),
-        .d = math.toCartesian(math.matvec4(obj.itfm, math.toProjectiveDir(wray.d))),
+        .o = math.transformPos(wray.o, obj.itfm),
+        .d = math.transformDir(wray.d, obj.itfm),
     };
 
     var intersect_geom: ?prim.IntersectResult = switch (obj.geom) {
@@ -52,7 +52,7 @@ fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
 
     if (intersect_geom) |*geom_result| {
         geom_result.norm = math.normalize( // <- necessary b/c transform could scale normal
-            math.toCartesian(math.matvec4(obj.trfm, math.toProjectiveDir(geom_result.norm))),
+            math.transformDir(geom_result.norm, obj.trfm),
         );
         return IntersectResult{
             .geom = geom_result.*,

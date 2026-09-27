@@ -15,8 +15,6 @@ test {
     _ = geom;
 }
 
-const renderer = rend.Renderers.backward_path_tracing;
-
 var render_start: std.Io.Clock.Timestamp = undefined;
 const chunk_size: usize = 1 << 11;
 
@@ -109,8 +107,9 @@ fn render(
 
         // render
         const ray: prim.Ray = .{ .o = settings.camera_position, .d = rays[pixel_i] };
-        const pixel_color = switch (renderer) {
+        const pixel_color = switch (settings.renderer) {
             .depth => rend.renderDepth(ray, scene),
+            .direct_lighting => rend.renderDirectLighting(ray, scene, settings.num_samples, rng),
             .backward_path_tracing => rend.renderWithBackwardPathTracing(ray, scene, settings.num_samples, rng),
         };
 
@@ -181,19 +180,19 @@ pub fn main(init: std.process.Init.Minimal) !void {
         return;
     }
 
-    const settings: io.Settings, const objects: []geom.Object =
+    const settings: io.Settings, var objects: []geom.Object =
         try io.readInput(args[1], alloc_main, alloc_work, stdio, stdout);
     _ = alloc_work_instance.reset(.free_all);
 
     const scene = scene_light_sort: {
-        var scene = geom.Scene{ .objects = objects, .num_lights = 0 };
+        var num_lights: usize = 0;
         for (0..objects.len) |oi| {
             if (m.mag(objects[oi].emit) > 0.0) {
-                std.mem.swap(geom.Object, &scene.objects[scene.num_lights], &scene.objects[oi]);
-                scene.num_lights += 1;
+                std.mem.swap(geom.Object, &objects[num_lights], &objects[oi]);
+                num_lights += 1;
             }
         }
-        break :scene_light_sort scene;
+        break :scene_light_sort geom.Scene{ .objects = objects, .num_lights = num_lights };
     };
 
     // render

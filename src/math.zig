@@ -526,3 +526,13 @@ test "rotateAboutAxis --- can flip axes" {
     try std.testing.expectApproxEqAbs(0.0, tfm[2], 4.0 * eps);
     try std.testing.expectApproxEqAbs(1.0, tfm[3], 4.0 * eps);
 }
+
+// transform helpers
+
+pub fn transformPos(pos: Vec3, trfm: Mat4) Vec3 {
+    return toCartesian(matvec4(trfm, toProjectivePos(pos)));
+}
+
+pub fn transformDir(pos: Vec3, trfm: Mat4) Vec3 {
+    return toCartesian(matvec4(trfm, toProjectiveDir(pos)));
+}
