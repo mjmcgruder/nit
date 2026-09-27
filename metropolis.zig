@@ -1,17 +1,17 @@
 const std = @import("std");
 
-const m = @import("src/math.zig");
 const io = @import("src/io.zig");
-const smp = @import("src/sampling.zig");
+const math = @import("src/math.zig");
+const samp = @import("src/sampling.zig");
 const rand = @import("src/random.zig");
 const geom = @import("src/geometry.zig");
 const rend = @import("src/rendering.zig");
 const prim = @import("src/geometry_primitives.zig");
 
 test {
-    _ = m;
+    _ = math;
     _ = io;
-    _ = smp;
+    _ = samp;
     _ = geom;
 }
 
@@ -27,7 +27,7 @@ var chunk_mutex: std.Io.Mutex = .init;
 var finished_pixels: usize = 0;
 
 fn dispatchRender(
-    rays: []const m.Vec3,
+    frame_info: FrameInfo,
     scene: geom.Scene,
     settings: *const io.Settings,
     thread_num: usize,
@@ -43,7 +43,7 @@ fn dispatchRender(
             chunk_start = chunk_end;
             chunk_mutex.unlock(stdio);
             try render(
-                rays,
+                frame_info,
                 scene,
                 settings,
                 &rng,
@@ -78,7 +78,7 @@ fn printRenderProgress(
 }
 
 fn render(
-    rays: []const m.Vec3,
+    frame_info: FrameInfo,
     scene: geom.Scene,
     settings: *const io.Settings,
     rng: *rand.PCGHash,
@@ -106,7 +106,10 @@ fn render(
         }
 
         // render
-        const ray: prim.Ray = .{ .o = settings.camera_position, .d = rays[pixel_i] };
+        const ray: prim.Ray = .{
+            .o = settings.camera_position,
+            .d = findCameraRay(pixel_i, frame_info),
+        };
         const pixel_color = switch (settings.renderer) {
             .depth => rend.renderDepth(ray, scene),
             .direct_lighting => rend.renderDirectLighting(ray, scene, settings.num_samples, rng),
@@ -116,42 +119,66 @@ fn render(
         // set final color value
         const pixel: *io.Pixel = &frame_buffer[pixel_i];
         std.debug.assert(!std.math.isNan(pixel_color[0]));
-        pixel.r = @intFromFloat(m.clamp(pixel_color[0], 0.0, 1.0) * 255.0);
+        pixel.r = @intFromFloat(math.clamp(pixel_color[0], 0.0, 1.0) * 255.0);
         std.debug.assert(!std.math.isNan(pixel_color[1]));
-        pixel.g = @intFromFloat(m.clamp(pixel_color[1], 0.0, 1.0) * 255.0);
+        pixel.g = @intFromFloat(math.clamp(pixel_color[1], 0.0, 1.0) * 255.0);
         std.debug.assert(!std.math.isNan(pixel_color[2]));
-        pixel.b = @intFromFloat(m.clamp(pixel_color[2], 0.0, 1.0) * 255.0);
+        pixel.b = @intFromFloat(math.clamp(pixel_color[2], 0.0, 1.0) * 255.0);
     }
 }
 
-fn initializePerspectiveRays(settings: io.Settings, allocator: std.mem.Allocator) ![]m.Vec3 {
+const FrameInfo = struct {
+    ulft: math.Vec3, // upper left corner
+    // pixel counts ("h"-horizontal, "v"-vertical)
+    npxh: usize,
+    npxv: usize,
+    // (normalized) reference plane direction vectors
+    vech: math.Vec3,
+    vecv: math.Vec3, // this points down
+    // pixel sizes (increments) at the reference plane
+    inch: f32,
+    incv: f32,
+};
+
+fn findCameraRay(pi: usize, f: FrameInfo) math.Vec3 {
+    const posv: f32 = @as(f32, @floatFromInt(pi / f.npxh)) + 0.5;
+    const posh: f32 = @as(f32, @floatFromInt(pi % f.npxh)) + 0.5;
+    return math.normalize(
+        math.add(
+            f.ulft,
+            math.add(
+                math.mul(f.incv * posv, f.vecv),
+                math.mul(f.inch * posh, f.vech),
+            ),
+        ),
+    );
+}
+
+fn initializeFrameInfo(settings: io.Settings) !FrameInfo {
     const window_h_flt: f32 = @floatFromInt(settings.window_h);
     const window_w_flt: f32 = @floatFromInt(settings.window_w);
 
-    const t: m.Vec3 = m.normalize(m.sub(settings.target_position, settings.camera_position)); // target vector
-    const b: m.Vec3 = m.normalize(m.cross(t, settings.up_vector)); // horizontal vector
-    const v: m.Vec3 = m.normalize(m.cross(b, t)); // vertical vector
+    const t: math.Vec3 = math.normalize(math.sub(settings.target_position, settings.camera_position)); // target vector
+    const b: math.Vec3 = math.normalize(math.cross(t, settings.up_vector)); // horizontal vector
+    const v: math.Vec3 = math.normalize(math.cross(b, t)); // vertical vector
 
     // view port half width and height at distance 1
     const hw: f32 = @tan(0.5 * settings.field_of_view * (std.math.pi / 180.0));
     const hh: f32 = hw * (window_h_flt / window_w_flt);
 
-    const ul: m.Vec3 = m.add(m.sub(t, m.mul(hw, b)), m.mul(hh, v)); // upper left point
+    const ul: math.Vec3 = math.add(math.sub(t, math.mul(hw, b)), math.mul(hh, v)); // upper left point
     const inc_w: f32 = (2.0 * hw) / (window_w_flt);
     const inc_h: f32 = (2.0 * hh) / (window_h_flt);
 
-    const rays: []m.Vec3 = try allocator.alloc(m.Vec3, settings.window_w * settings.window_h);
-    for (rays, 0..) |*item, i| {
-        const r: usize = i / settings.window_w;
-        const c: usize = i - (settings.window_w * r);
-        const r_flt: f32 = @floatFromInt(r);
-        const c_flt: f32 = @floatFromInt(c);
-        item.* = m.normalize(
-            m.add(ul, m.add(m.mul(-inc_h * (r_flt + 0.5), v), m.mul(inc_w * (c_flt + 0.5), b))),
-        );
-    }
-
-    return rays;
+    return FrameInfo{
+        .ulft = ul,
+        .npxh = settings.window_w,
+        .npxv = settings.window_h,
+        .vech = b,
+        .vecv = math.mul(-1.0, v),
+        .inch = inc_w,
+        .incv = inc_h,
+    };
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
@@ -187,7 +214,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const scene = scene_light_sort: {
         var num_lights: usize = 0;
         for (0..objects.len) |oi| {
-            if (m.mag(objects[oi].emit) > 0.0) {
+            if (math.mag(objects[oi].emit) > 0.0) {
                 std.mem.swap(geom.Object, &objects[num_lights], &objects[oi]);
                 num_lights += 1;
             }
@@ -205,16 +232,13 @@ pub fn main(init: std.process.Init.Minimal) !void {
     );
     @memset(frame_buffer, io.Pixel{});
 
-    const rays: []m.Vec3 = try initializePerspectiveRays(settings, alloc_main);
-    defer alloc_main.free(rays);
-
     render_start = .now(stdio, .awake);
     last_print_time = 0;
 
     const pool = try alloc_main.alloc(std.Thread, settings.thread_count);
     for (pool, 0..) |*thread, thread_num| {
         thread.* = try std.Thread.spawn(.{}, dispatchRender, .{
-            rays,
+            try initializeFrameInfo(settings),
             scene,
             &settings,
             thread_num,
