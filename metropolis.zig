@@ -113,7 +113,7 @@ fn render(
         const pixel_color = switch (settings.renderer) {
             .depth => rend.renderDepth(ray, scene),
             .direct_lighting => rend.renderDirectLighting(ray, scene, settings.num_samples, rng),
-            .backward_path_tracing => rend.renderWithBackwardPathTracing(ray, scene, settings.num_samples, rng),
+            .path_tracing => rend.render(ray, scene, settings.num_samples, rng),
         };
 
         // set final color value

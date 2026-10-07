@@ -15,8 +15,8 @@ const cross = math.cross;
 const normalize = math.normalize;
 
 pub const Ray = struct {
-    o: Vec3,
-    d: Vec3,
+    o: Vec3 = @splat(0.0),
+    d: Vec3 = @splat(0.0),
 };
 
 pub const Sphere = struct {

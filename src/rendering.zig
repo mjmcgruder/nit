@@ -9,13 +9,15 @@ const rand = @import("random.zig");
 const Vec3 = math.Vec3;
 const mul = math.mul;
 const add = math.add;
+const sub = math.sub;
 const dot = math.dot;
 const div = math.div;
+const normalize = math.normalize;
 
 pub const Renderers = enum {
     depth,
     direct_lighting,
-    backward_path_tracing,
+    path_tracing,
 };
 
 const bump = 1.0e-5;
@@ -26,12 +28,48 @@ pub fn renderDepth(camera_ray: prim.Ray, scene: geom.Scene) Vec3 {
     return @splat(1.0 / (d + 1.0));
 }
 
+fn computeBRDF(wi: Vec3, wr: Vec3, surf: geom.IntersectResult) Vec3 {
+    const n: Vec3 = surf.geom.norm;
+    return switch (surf.mtrl) {
+        geom.Material.diffuse => mul(surf.refl, 1.0 / std.math.pi),
+        geom.Material.specular => specular_brdf: {
+            const expected_refl = normalize(sub(mul(2.0, mul(dot(n, wi), n)), wi));
+            if (@abs(1.0 - dot(expected_refl, wr)) < 16.0 * math.eps) {
+                break :specular_brdf mul(surf.refl, math.sdiv(1.0, dot(wi, n)));
+            } else {
+                break :specular_brdf @splat(0.0);
+            }
+        },
+    };
+}
+
 /// NOTE: This visibility operator assumes you're not sampling the back side of lights. If you are,
 /// the sample probability density of the sample will be off by a factor of two.
 fn checkVisibility(light: geom.Object, scene: geom.Scene, wi: prim.Ray) bool {
     const res_light = geom.intersectScene(wi, .{ .objects = &.{light} }) orelse return false;
     const res_scene = geom.intersectScene(wi, scene) orelse return false;
     if (res_light.geom.dist == res_scene.geom.dist) return true else return false;
+}
+
+fn estimateRadianceFromLights(
+    scene: geom.Scene,
+    surf: geom.IntersectResult,
+    orig: Vec3,
+    wr: Vec3,
+    rng: *rand.PCGHash,
+) ?Vec3 {
+    const sample: samp.Sample, const light: geom.Object =
+        samp.sampleLights(orig, scene, rng) orelse return null;
+    std.debug.assert(std.math.approxEqAbs(f32, math.mag(sample.dir), 1.0, 4.0 * math.eps));
+
+    const cos_theta: f32 = dot(sample.dir, surf.geom.norm);
+
+    if (cos_theta <= 0.0 or !checkVisibility(light, scene, .{ .o = orig, .d = sample.dir }))
+        return null;
+
+    const brdf: Vec3 = computeBRDF(sample.dir, wr, surf);
+    const f = mul(brdf, mul(light.emit, cos_theta));
+    return mul(f, math.sdiv(1.0, sample.p));
 }
 
 pub fn renderDirectLighting(
@@ -50,39 +88,26 @@ pub fn renderDirectLighting(
 
     var sum: Vec3 = @splat(0.0);
     for (0..num_samples) |_| {
-        const sample: samp.Sample, const light: geom.Object =
-            samp.sampleLights(orig, scene, rng) orelse continue;
-        std.debug.assert(std.math.approxEqAbs(f32, math.mag(sample.dir), 1.0, 4.0 * math.eps));
-
-        const coth: f32 = dot(sample.dir, norm);
-
-        if (coth <= 0.0 or !checkVisibility(light, scene, .{ .o = orig, .d = sample.dir }))
-            continue;
-
-        const brdf: Vec3 = switch (surf.mtrl) {
-            geom.Material.diffuse => mul(surf.refl, 1.0 / std.math.pi),
-            geom.Material.specular => @splat(0.0), // we're not importance sampling reflectance
-        };
-
-        const f = mul(brdf, mul(light.emit, coth));
-        const estimate = div(f, @as(f32, @floatFromInt(num_samples)) * sample.p);
+        const wr: Vec3 = mul(-1.0, camera_ray.d);
+        const estimate: Vec3 =
+            estimateRadianceFromLights(scene, surf, orig, wr, rng) orelse continue;
         sum = add(sum, estimate);
     }
 
-    return add(sum, surf.emit);
+    return add(div(sum, @as(f32, @floatFromInt(num_samples))), surf.emit);
 }
 
-pub fn renderWithBackwardPathTracing(
+pub fn render(
     camera_ray: prim.Ray,
     scene: geom.Scene,
     num_samples: usize,
     rng: *rand.PCGHash,
 ) Vec3 {
     const BounceNode = struct {
-        brdf: Vec3 = .{ 0.0, 0.0, 0.0 },
-        emit: Vec3 = .{ 0.0, 0.0, 0.0 },
-        c_th: f32 = 0.0,
-        prob: f32 = 1.0,
+        oppi: prim.Ray = .{},
+        oppr: prim.Ray = .{},
+        surf: geom.IntersectResult = .{},
+        prob: f32 = 1.0, // prob that wi was selected (remember we're reversed)
     };
 
     const max_bounces: usize = 1 << 3;
@@ -95,35 +120,26 @@ pub fn renderWithBackwardPathTracing(
         stack_i = 0;
 
         // build bounce stack
-        var ro: Vec3 = camera_ray.o;
-        var rd: Vec3 = camera_ray.d;
+
+        var oppr: prim.Ray = .{ .o = camera_ray.o, .d = camera_ray.d };
         bounce_loop: while (stack_i < max_bounces) : (stack_i += 1) {
-            if (geom.intersectScene(.{ .o = ro, .d = rd }, scene)) |intersect| {
-                const dist = intersect.geom.dist;
+            if (geom.intersectScene(oppr, scene)) |intersect| {
                 const norm = intersect.geom.norm;
-                ro = add(add(ro, mul(rd, dist)), mul(norm, bump));
-                switch (intersect.mtrl) {
-                    geom.Material.diffuse => {
-                        const sample: samp.Sample = samp.sampleLambertianBRDF(norm, rng);
-                        bounce_stack[stack_i] = BounceNode{
-                            .brdf = mul(intersect.refl, 1.0 / std.math.pi),
-                            .emit = intersect.emit,
-                            .c_th = sample.p * std.math.pi,
-                            .prob = sample.p,
-                        };
-                        rd = sample.dir;
-                    },
-                    geom.Material.specular => {
-                        const sample: samp.Sample = samp.sampleSpecularBRDF(norm, mul(rd, -1.0));
-                        bounce_stack[stack_i] = BounceNode{
-                            .brdf = mul(intersect.refl, math.sdiv(1.0, dot(sample.dir, norm))),
-                            .emit = intersect.emit,
-                            .c_th = dot(sample.dir, norm),
-                            .prob = sample.p,
-                        };
-                        rd = sample.dir;
-                    },
-                }
+                const sample: samp.Sample = switch (intersect.mtrl) {
+                    geom.Material.diffuse => samp.sampleLambertianBRDF(norm, rng),
+                    geom.Material.specular => samp.sampleSpecularBRDF(norm, mul(oppr.d, -1.0)),
+                };
+                const oppi = prim.Ray{
+                    .o = add(add(oppr.o, mul(oppr.d, intersect.geom.dist)), mul(norm, bump)),
+                    .d = sample.dir,
+                };
+                bounce_stack[stack_i] = BounceNode{
+                    .oppi = oppi,
+                    .oppr = oppr,
+                    .surf = intersect,
+                    .prob = sample.p,
+                };
+                oppr = oppi;
             } else {
                 if (stack_i == 0) {
                     break :sample_loop;
@@ -134,17 +150,41 @@ pub fn renderWithBackwardPathTracing(
         }
 
         // accumulate incoming color by unwinding bounce stack
+
         var incoming: Vec3 = .{ 0.0, 0.0, 0.0 }; // start black
         while (stack_i > 0) {
             stack_i -= 1;
             const node: BounceNode = bounce_stack[stack_i];
-            incoming = add(
-                node.emit,
-                mul(mul(mul(node.brdf, incoming), node.c_th), math.sdiv(1.0, node.prob)),
-            );
+            const wr: Vec3 = mul(node.oppr.d, -1.0);
+
+            const pest: Vec3 = brdf_sample: {
+                const wi: Vec3 = node.oppi.d;
+                const brdf: Vec3 = computeBRDF(wi, wr, node.surf);
+                const cost: f32 = dot(wi, node.surf.geom.norm);
+                const f: Vec3 = mul(mul(brdf, incoming), cost);
+                break :brdf_sample mul(f, math.sdiv(1.0, node.prob));
+            };
+            if (math.mag(pest) > 0.0) {
+                incoming = add(node.surf.emit, pest);
+                continue;
+            }
+
+            const lest: Vec3 =
+                estimateRadianceFromLights(scene, node.surf, node.oppi.o, wr, rng) orelse @splat(0.0);
+            if (math.mag(lest) > 0.0) {
+                incoming = add(node.surf.emit, lest);
+                continue;
+            }
+
+            if (stack_i == 0) { // TODO: line below causes excess noise if always applied... why?
+                incoming = add(node.surf.emit, @as(Vec3, @splat(0.0)));
+            } else {
+                incoming = @splat(0.0);
+            }
         }
 
         // average sample color into pixel color
+
         pixel_color = add(
             pixel_color,
             mul(incoming, 1.0 / @as(f32, @floatFromInt(num_samples))),

@@ -6,7 +6,7 @@ const rend = @import("rendering.zig");
 const geom_mesh = @import("geometry_mesh.zig");
 
 pub const Settings = struct {
-    renderer: rend.Renderers = .backward_path_tracing,
+    renderer: rend.Renderers = .path_tracing,
     thread_count: usize = 8,
     num_samples: usize = 1 << 0,
     window_w: usize = 1920,
@@ -124,7 +124,7 @@ const geometry_type_map = std.StaticStringMap(std.meta.Tag(geom.GeometryType)).i
 const renderer_map = std.StaticStringMap(rend.Renderers).initComptime(.{
     .{ "depth", .depth },
     .{ "direct", .direct_lighting },
-    .{ "path_tracing", .backward_path_tracing },
+    .{ "path_tracing", .path_tracing },
 });
 
 const whitespace: []const u8 = " \t\r\n";
