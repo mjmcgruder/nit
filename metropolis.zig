@@ -94,9 +94,9 @@ fn render(
         _ = @atomicRmw(
             usize,
             &finished_pixels,
-            std.builtin.AtomicRmwOp.Add,
+            std.lang.AtomicRmwOp.Add,
             1,
-            std.builtin.AtomicOrder.acq_rel,
+            std.lang.AtomicOrder.acq_rel,
         );
 
         // occasionally print a progress update

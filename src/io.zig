@@ -50,9 +50,9 @@ const ParsingError = error{
 };
 
 fn parseEnum(enum_type: type, string: []const u8) !enum_type {
-    inline for (@typeInfo(enum_type).@"enum".fields) |field| {
-        if (std.mem.eql(u8, string, field.name)) {
-            return @field(enum_type, field.name);
+    inline for (@typeInfo(enum_type).@"enum".field_names) |name| {
+        if (std.mem.eql(u8, string, name)) {
+            return @field(enum_type, name);
         }
     }
     return ParsingError.UnknownEnumValue;
