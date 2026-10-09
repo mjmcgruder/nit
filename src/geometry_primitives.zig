@@ -28,10 +28,9 @@ pub const Box = struct {
     min: Vec3 = @splat(std.math.floatMax(f32)),
     max: Vec3 = @splat(-std.math.floatMax(f32)),
     pub fn grow(self: *Box, point: anytype) void {
-        inline for (0..3) |dim| {
-            if (point[dim] < self.min[dim]) self.min[dim] = point[dim];
-            if (point[dim] > self.max[dim]) self.max[dim] = point[dim];
-        }
+        const p: Vec3 = point;
+        self.min = @select(f32, p < self.min, p, self.min);
+        self.max = @select(f32, p > self.max, p, self.max);
     }
     pub fn size(self: *const Box) Vec3 {
         return mul(0.5, sub(self.max, self.min));
