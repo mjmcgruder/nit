@@ -21,6 +21,7 @@ pub const Renderers = enum {
 };
 
 const bump = 1.0e-5;
+const zero: Vec3 = @splat(0.0);
 
 pub fn renderDepth(camera_ray: prim.Ray, scene: geom.Scene) Vec3 {
     const far = geom.IntersectResult{ .geom = .{ .dist = std.math.floatMax(f32) } };
@@ -43,11 +44,20 @@ fn computeBRDF(wi: Vec3, wr: Vec3, surf: geom.IntersectResult) Vec3 {
     };
 }
 
+fn estimateReflectedRadiance(incoming: Vec3, wi: Vec3, wr: Vec3, surf: geom.IntersectResult, prob: f32) Vec3 {
+    const brdf: Vec3 = computeBRDF(wi, wr, surf);
+    const coth: f32 = dot(wi, surf.geom.norm);
+    const f = mul(brdf, mul(incoming, coth));
+    return mul(f, math.sdiv(1.0, prob));
+}
+
 /// NOTE: This visibility operator assumes you're not sampling the back side of lights. If you are,
-/// the sample probability density of the sample will be off by a factor of two.
-fn checkVisibility(light: geom.Object, scene: geom.Scene, wi: prim.Ray) bool {
-    const res_light = geom.intersectScene(wi, .{ .objects = &.{light} }) orelse return false;
-    const res_scene = geom.intersectScene(wi, scene) orelse return false;
+/// the sample probability density of the sample will be off by a factor of two(ish).
+fn checkVisibility(light: geom.Object, scene: geom.Scene, p: Vec3, n: Vec3, wi: Vec3) bool {
+    if (dot(wi, n) <= 0.0) return false;
+    const ray = prim.Ray{ .o = p, .d = wi };
+    const res_light = geom.intersectScene(ray, .{ .objects = &.{light} }) orelse return false;
+    const res_scene = geom.intersectScene(ray, scene) orelse return false;
     if (res_light.geom.dist == res_scene.geom.dist) return true else return false;
 }
 
@@ -57,19 +67,17 @@ fn estimateRadianceFromLights(
     orig: Vec3,
     wr: Vec3,
     rng: *rand.PCGHash,
-) ?Vec3 {
-    const sample: samp.Sample, const light: geom.Object =
-        samp.sampleLights(orig, scene, rng) orelse return null;
-    std.debug.assert(std.math.approxEqAbs(f32, math.mag(sample.dir), 1.0, 4.0 * math.eps));
-
-    const cos_theta: f32 = dot(sample.dir, surf.geom.norm);
-
-    if (cos_theta <= 0.0 or !checkVisibility(light, scene, .{ .o = orig, .d = sample.dir }))
-        return null;
-
-    const brdf: Vec3 = computeBRDF(sample.dir, wr, surf);
-    const f = mul(brdf, mul(light.emit, cos_theta));
-    return mul(f, math.sdiv(1.0, sample.p));
+) Vec3 {
+    const sample, const emit = if (surf.mtrl == geom.Material.specular) blk: {
+        const sample = samp.sampleSpecularBRDF(surf.geom.norm, wr);
+        const light = geom.intersectScene(.{ .o = orig, .d = sample.dir }, scene) orelse return zero;
+        break :blk .{ sample, light.emit };
+    } else blk: {
+        const sample, const light: geom.Object = samp.sampleLights(orig, scene, rng) orelse return zero;
+        if (!checkVisibility(light, scene, orig, surf.geom.norm, sample.dir)) return zero;
+        break :blk .{ sample, light.emit };
+    };
+    return estimateReflectedRadiance(emit, sample.dir, wr, surf, sample.p);
 }
 
 pub fn renderDirectLighting(
@@ -84,13 +92,10 @@ pub fn renderDirectLighting(
     const norm: Vec3 = surf.geom.norm;
     const orig: Vec3 = add(add(camera_ray.o, mul(camera_ray.d, surf.geom.dist)), mul(norm, bump));
 
-    std.debug.assert(std.math.approxEqAbs(f32, math.mag(norm), 1.0, 4.0 * math.eps));
-
     var sum: Vec3 = @splat(0.0);
     for (0..num_samples) |_| {
         const wr: Vec3 = mul(-1.0, camera_ray.d);
-        const estimate: Vec3 =
-            estimateRadianceFromLights(scene, surf, orig, wr, rng) orelse continue;
+        const estimate: Vec3 = estimateRadianceFromLights(scene, surf, orig, wr, rng);
         sum = add(sum, estimate);
     }
 
@@ -157,29 +162,15 @@ pub fn render(
             const node: BounceNode = bounce_stack[stack_i];
             const wr: Vec3 = mul(node.oppr.d, -1.0);
 
-            const pest: Vec3 = brdf_sample: {
-                const wi: Vec3 = node.oppi.d;
-                const brdf: Vec3 = computeBRDF(wi, wr, node.surf);
-                const cost: f32 = dot(wi, node.surf.geom.norm);
-                const f: Vec3 = mul(mul(brdf, incoming), cost);
-                break :brdf_sample mul(f, math.sdiv(1.0, node.prob));
-            };
-            if (math.mag(pest) > 0.0) {
-                incoming = add(node.surf.emit, pest);
-                continue;
-            }
+            const estimate_indirect: Vec3 =
+                estimateReflectedRadiance(incoming, node.oppi.d, wr, node.surf, node.prob);
 
-            const lest: Vec3 =
-                estimateRadianceFromLights(scene, node.surf, node.oppi.o, wr, rng) orelse @splat(0.0);
-            if (math.mag(lest) > 0.0) {
-                incoming = add(node.surf.emit, lest);
-                continue;
-            }
+            const estimate_direct: Vec3 =
+                estimateRadianceFromLights(scene, node.surf, node.oppi.o, wr, rng);
 
-            if (stack_i == 0) { // TODO: line below causes excess noise if always applied... why?
-                incoming = add(node.surf.emit, @as(Vec3, @splat(0.0)));
-            } else {
-                incoming = @splat(0.0);
+            incoming = add(estimate_direct, estimate_indirect);
+            if (stack_i == 0) {
+                incoming += node.surf.emit;
             }
         }
 

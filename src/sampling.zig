@@ -14,11 +14,13 @@ const Vec3 = math.Vec3;
 const cross = math.cross;
 const normalize = math.normalize;
 
+const assert = std.debug.assert;
+
 /// Generates an arbitrary set of local coordinate axes such that the input normal vector is on the
 /// z-axis, all axes are normalized, and the coordinate system is right-handed.
 /// NOTE: The input normal vector MUST be normalized for correct results.
 pub fn buildCoordinateAxes(n: Vec3) struct { Vec3, Vec3, Vec3 } {
-    std.debug.assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
+    assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
     const z: Vec3 = n;
     const y: Vec3 = normalize(cross(z, if (@abs(z[0]) < 0.9) math.unit_x else math.unit_y));
     const x: Vec3 = cross(y, z);
@@ -107,7 +109,7 @@ pub fn sampleLights(
     scene: geom.Scene,
     rng: *rand.PCGHash,
 ) ?struct { Sample, geom.Object } {
-    const light: geom.Object = scene.objects[rng.uint32() % @as(u32, @intCast(scene.num_lights))];
+    const light: geom.Object = scene.objects[@mod(rng.uint32(), @as(u32, @intCast(scene.num_lights)))];
     const mPosition = math.transformPos(p, light.itfm);
 
     const one_light_sample: Sample = switch (light.geom) {
@@ -120,6 +122,7 @@ pub fn sampleLights(
         .dir = math.transformDir(one_light_sample.dir, light.trfm),
         .p = one_light_sample.p / @as(f32, @floatFromInt(scene.num_lights)),
     };
+    assert(std.math.approxEqAbs(f32, math.mag(all_light_sample.dir), 1.0, 4.0 * math.eps));
 
     return .{ all_light_sample, light };
 }
@@ -129,7 +132,7 @@ pub fn sampleLights(
 /// and constant incoming radiance.
 /// NOTE: The input normal vector MUST be normalized for correct results.
 pub fn sampleLambertianBRDF(n: Vec3, rng: *rand.PCGHash) Sample {
-    std.debug.assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
+    assert(std.math.approxEqRel(f32, mag(n), 1.0, 4.0 * math.eps));
     const r: f32 = @sqrt(rng.float32());
     const t: f32 = 2.0 * std.math.pi * rng.float32();
     const x: f32 = r * @cos(t);
