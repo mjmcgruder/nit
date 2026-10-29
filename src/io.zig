@@ -232,13 +232,17 @@ pub fn readInput(
                                     break :blk .{ .min = m.mul(size, -1.0), .max = size };
                                 },
                                 .mesh => |*value| value.* = blk: {
-                                    const raw_mesh = try readASCIISTL(val, workspace, io, stdout);
+                                    try stdout.print("Reading ASCII STL file \"{s}\"... ", .{val});
+                                    const raw_mesh = try readASCIISTL(val, workspace, io);
+                                    try stdout.print("done.\n", .{});
+
                                     try stdout.print("Deduplicating mesh vertices... ", .{});
                                     const dedupe_start = std.Io.Clock.awake.now(io).nanoseconds;
                                     var mesh = try geom_mesh.deDupeMesh(raw_mesh, allocator);
                                     const dedupe_stop = std.Io.Clock.awake.now(io).nanoseconds;
                                     const dedupe_duration = @as(f32, @floatFromInt(dedupe_stop - dedupe_start)) / std.time.ns_per_s;
                                     try stdout.print("done ({f} -> {f} vertices in {d:.3}s).\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len), dedupe_duration });
+
                                     try stdout.print("Building BVH for \"{s}\"... ", .{val});
                                     const bvh_build_start = std.Io.Clock.awake.now(io).nanoseconds;
                                     const stats = try geom_mesh.buildBVH(&mesh, allocator, 4, 1 << 4);
@@ -246,6 +250,7 @@ pub fn readInput(
                                     const bvh_build_duration = @as(f32, @floatFromInt(bvh_build_stop - bvh_build_start)) / std.time.ns_per_s;
                                     try stdout.print("done (in {d:.3}s).\n", .{bvh_build_duration});
                                     try geom_mesh.printBVHStats(stats, io);
+
                                     break :blk mesh;
                                 },
                             }
@@ -292,10 +297,7 @@ pub fn readASCIISTL(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
     io: std.Io,
-    stdout: *std.Io.Writer,
 ) !geom_mesh.Mesh {
-    try stdout.print("Reading ASCII STL file \"{s}\"... ", .{rel_path});
-
     var read_buffer: [1 << 18]u8 = undefined;
     const file = try std.Io.Dir.cwd().openFile(io, rel_path, .{});
     defer file.close(io);
@@ -330,7 +332,6 @@ pub fn readASCIISTL(
         const keyword = tok.next() orelse continue;
 
         if (std.mem.eql(u8, keyword, "endsolid")) {
-            try stdout.print("done.\n", .{});
             return .{ .vrt = vrt, .ind = ind };
         }
 
