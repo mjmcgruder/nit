@@ -417,9 +417,13 @@ test "BVH --- intersects" {
 ///   order. If mesh primitives are ordered in a roughly spatially local way, vertices will be
 ///   ordered in the same manner.
 /// - Unused vertices are automatically pruned.
-pub fn deDupeMesh(mesh: Mesh, alloc_main: Allocator, alloc_work: Allocator) !Mesh {
+pub fn deDupeMesh(mesh: Mesh, allocator: Allocator) !Mesh {
     std.debug.assert(mesh.ind.len % 3 == 0);
     const ntri: usize = mesh.ind.len / 3;
+
+    var workspace_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer workspace_instance.deinit();
+    const workspace: std.mem.Allocator = workspace_instance.allocator();
 
     var map: std.HashMapUnmanaged(
         Vec3c,
@@ -434,11 +438,11 @@ pub fn deDupeMesh(mesh: Mesh, alloc_main: Allocator, alloc_work: Allocator) !Mes
         },
         std.hash_map.default_max_load_percentage,
     ) = .{};
-    defer map.deinit(alloc_work);
+    defer map.deinit(workspace);
 
     // Table mapping each vertex in the old list to its position in the new list.
-    var remap_table: []u32 = try alloc_work.alloc(u32, mesh.vrt.len);
-    defer alloc_work.free(remap_table);
+    var remap_table: []u32 = try workspace.alloc(u32, mesh.vrt.len);
+    defer workspace.free(remap_table);
     @memset(remap_table, std.math.maxInt(std.meta.Elem(@TypeOf(remap_table))));
 
     var next_index: u32 = 0;
@@ -450,15 +454,15 @@ pub fn deDupeMesh(mesh: Mesh, alloc_main: Allocator, alloc_work: Allocator) !Mes
                 remap_table[vertex_index] = val;
             } else {
                 remap_table[vertex_index] = next_index;
-                try map.put(alloc_work, key, next_index);
+                try map.put(workspace, key, next_index);
                 next_index += 1;
             }
         }
     }
 
     var result: Mesh = .{};
-    result.vrt = try alloc_main.alloc(Vec3c, next_index);
-    result.ind = try alloc_main.alloc(u32, mesh.ind.len);
+    result.vrt = try allocator.alloc(Vec3c, next_index);
+    result.ind = try allocator.alloc(u32, mesh.ind.len);
 
     for (0..mesh.vrt.len) |vi| {
         const dst: u32 = remap_table[vi];

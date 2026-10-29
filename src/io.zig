@@ -131,11 +131,14 @@ const whitespace: []const u8 = " \t\r\n";
 
 pub fn readInput(
     rel_path: []const u8,
-    alloc_main: std.mem.Allocator,
-    alloc_work: std.mem.Allocator,
+    allocator: std.mem.Allocator,
     io: std.Io,
     stdout: *std.Io.Writer,
 ) !struct { Settings, []geom.Object } {
+    var workspace_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer workspace_instance.deinit();
+    const workspace: std.mem.Allocator = workspace_instance.allocator();
+
     try stdout.print("Reading input file \"{s}\".\n", .{rel_path});
 
     var settings: Settings = .{};
@@ -177,7 +180,7 @@ pub fn readInput(
                     .box => geometry = geom.GeometryType{ .box = .{} },
                     .mesh => geometry = geom.GeometryType{ .mesh = .{} },
                 }
-                try objects.append(alloc_main, geom.Object{ .geom = geometry });
+                try objects.append(workspace, geom.Object{ .geom = geometry });
                 continue :line_loop;
             } else {
                 return ParsingError.UnknownObjectType;
@@ -229,16 +232,16 @@ pub fn readInput(
                                     break :blk .{ .min = m.mul(size, -1.0), .max = size };
                                 },
                                 .mesh => |*value| value.* = blk: {
-                                    const raw_mesh = try readASCIISTL(val, alloc_work, io, stdout);
+                                    const raw_mesh = try readASCIISTL(val, workspace, io, stdout);
                                     try stdout.print("Deduplicating mesh vertices... ", .{});
                                     const dedupe_start = std.Io.Clock.awake.now(io).nanoseconds;
-                                    var mesh = try geom_mesh.deDupeMesh(raw_mesh, alloc_main, alloc_work);
+                                    var mesh = try geom_mesh.deDupeMesh(raw_mesh, allocator);
                                     const dedupe_stop = std.Io.Clock.awake.now(io).nanoseconds;
                                     const dedupe_duration = @as(f32, @floatFromInt(dedupe_stop - dedupe_start)) / std.time.ns_per_s;
                                     try stdout.print("done ({f} -> {f} vertices in {d:.3}s).\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len), dedupe_duration });
                                     try stdout.print("Building BVH for \"{s}\"... ", .{val});
                                     const bvh_build_start = std.Io.Clock.awake.now(io).nanoseconds;
-                                    const stats = try geom_mesh.buildBVH(&mesh, alloc_main, 4, 1 << 4);
+                                    const stats = try geom_mesh.buildBVH(&mesh, allocator, 4, 1 << 4);
                                     const bvh_build_stop = std.Io.Clock.awake.now(io).nanoseconds;
                                     const bvh_build_duration = @as(f32, @floatFromInt(bvh_build_stop - bvh_build_start)) / std.time.ns_per_s;
                                     try stdout.print("done (in {d:.3}s).\n", .{bvh_build_duration});
@@ -270,7 +273,10 @@ pub fn readInput(
         obj.itfm = m.invertTransform(obj.trfm);
     }
 
-    return .{ settings, objects.items };
+    const final_objects: []geom.Object = try allocator.alloc(geom.Object, objects.items.len);
+    @memcpy(final_objects, objects.items);
+
+    return .{ settings, final_objects };
 }
 
 const STLReadError = error{ // TODO: possibly generalize this

@@ -193,23 +193,18 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     try stdout.print("\n\npreprocessing...\n\n\n", .{});
 
-    var alloc_main_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer alloc_main_instance.deinit();
-    const alloc_main: std.mem.Allocator = alloc_main_instance.allocator();
+    var allocator_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer allocator_instance.deinit();
+    const allocator: std.mem.Allocator = allocator_instance.allocator();
 
-    var alloc_work_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer alloc_work_instance.deinit();
-    const alloc_work: std.mem.Allocator = alloc_work_instance.allocator();
-
-    const args = try init.args.toSlice(alloc_main);
+    const args = try init.args.toSlice(allocator);
     if (args.len != 2) {
         try stdout.print("  usage: metropolis <input_file>\n", .{});
         return;
     }
 
     const settings: io.Settings, var objects: []geom.Object =
-        try io.readInput(args[1], alloc_main, alloc_work, stdio, stdout);
-    _ = alloc_work_instance.reset(.free_all);
+        try io.readInput(args[1], allocator, stdio, stdout);
 
     const scene = scene_light_sort: {
         var num_lights: usize = 0;
@@ -226,7 +221,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     try stdout.print("\n\nrendering...\n\n\n", .{});
 
-    const frame_buffer: []io.Pixel = try alloc_main.alloc(
+    const frame_buffer: []io.Pixel = try allocator.alloc(
         io.Pixel,
         settings.window_w * settings.window_h,
     );
@@ -235,7 +230,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     render_start = .now(stdio, .awake);
     last_print_time = 0;
 
-    const pool = try alloc_main.alloc(std.Thread, settings.thread_count);
+    const pool = try allocator.alloc(std.Thread, settings.thread_count);
     for (pool, 0..) |*thread, thread_num| {
         thread.* = try std.Thread.spawn(.{}, dispatchRender, .{
             try initializeFrameInfo(settings),
