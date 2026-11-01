@@ -380,11 +380,8 @@ test "readInput --- runs" {
     var alloc_main_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer alloc_main_instance.deinit();
     const alloc_main: std.mem.Allocator = alloc_main_instance.allocator();
-    var alloc_work_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer alloc_work_instance.deinit();
-    const alloc_work: std.mem.Allocator = alloc_work_instance.allocator();
 
-    const settings, const scene = try readInput("src/test_data/input.txt", alloc_main, alloc_work, io, stdout);
+    const settings, const scene = try readInput("src/test_data/input.txt", alloc_main, io, stdout);
 
     try std.testing.expectEqual(settings.renderer, rend.Renderers.depth);
     try std.testing.expectEqual(settings.thread_count, 8);

@@ -504,7 +504,7 @@ test "deDupeMesh --- cube" {
     };
     const mesh: Mesh = .{ .vrt = &vertices, .ind = &indices };
 
-    const result = try deDupeMesh(mesh, arena_main.allocator(), arena_work.allocator());
+    const result = try deDupeMesh(mesh, arena_main.allocator());
     try std.testing.expectEqual(@as(usize, 8), result.vrt.len);
 }
 
