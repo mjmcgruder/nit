@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) !void {
     );
 
     const root_module = b.createModule(.{
-        .root_source_file = b.path("metropolis.zig"),
+        .root_source_file = b.path("nit.zig"),
         .target = target_options,
         .optimize = optimization_options,
         .strip = not_profile,
@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) !void {
     // main executable
 
     const exe = b.addExecutable(.{
-        .name = "metropolis",
+        .name = "nit",
         .root_module = root_module,
         .use_llvm = use_llvm,
     });

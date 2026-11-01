@@ -199,7 +199,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     const args = try init.args.toSlice(allocator);
     if (args.len != 2) {
-        try stdout.print("  usage: metropolis <input_file>\n", .{});
+        try stdout.print("  usage: nit <input_file>\n", .{});
         return;
     }
 
