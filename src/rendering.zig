@@ -24,8 +24,8 @@ const bump = 1.0e-5;
 const zero: Vec3 = @splat(0.0);
 
 pub fn renderDepth(camera_ray: prim.Ray, scene: geom.Scene) Vec3 {
-    const far = geom.IntersectResult{ .geom = .{ .dist = std.math.floatMax(f32) } };
-    const d: f32 = (geom.intersectScene(camera_ray, scene) orelse far).geom.dist;
+    const far = geom.IntersectResult{ .geom = .{ .t = std.math.floatMax(f32) } };
+    const d: f32 = (geom.intersectScene(camera_ray, scene) orelse far).geom.t;
     return @splat(1.0 / (d + 1.0));
 }
 
@@ -58,7 +58,7 @@ fn checkVisibility(light: geom.Object, scene: geom.Scene, p: Vec3, n: Vec3, wi: 
     const ray = prim.Ray{ .o = p, .d = wi };
     const res_light = geom.intersectScene(ray, .{ .objects = &.{light} }) orelse return false;
     const res_scene = geom.intersectScene(ray, scene) orelse return false;
-    if (res_light.geom.dist == res_scene.geom.dist) return true else return false;
+    if (res_light.geom.t == res_scene.geom.t) return true else return false;
 }
 
 fn estimateRadianceFromLights(
@@ -90,7 +90,7 @@ pub fn renderDirectLighting(
         geom.intersectScene(camera_ray, scene) orelse return @splat(0.0);
 
     const norm: Vec3 = surf.geom.norm;
-    const orig: Vec3 = add(add(camera_ray.o, mul(camera_ray.d, surf.geom.dist)), mul(norm, bump));
+    const orig: Vec3 = add(add(camera_ray.o, mul(camera_ray.d, surf.geom.t)), mul(norm, bump));
 
     var sum: Vec3 = @splat(0.0);
     for (0..num_samples) |_| {
@@ -135,7 +135,7 @@ pub fn render(
                     geom.Material.specular => samp.sampleSpecularBRDF(norm, mul(oppr.d, -1.0)),
                 };
                 const oppi = prim.Ray{
-                    .o = add(add(oppr.o, mul(oppr.d, intersect.geom.dist)), mul(norm, bump)),
+                    .o = add(add(oppr.o, mul(oppr.d, intersect.geom.t)), mul(norm, bump)),
                     .d = sample.dir,
                 };
                 bounce_stack[stack_i] = BounceNode{

@@ -300,21 +300,21 @@ test "BVH --- splits planes" {
 }
 
 pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
-    var result: prim.IntersectResult = .{ .dist = std.math.floatMax(f32), .norm = undefined };
+    var result: prim.IntersectResult = .{ .t = std.math.floatMax(f32), .norm = undefined };
 
     const RayMeshStackNode = struct {
         indx: u32,
-        dist: f32,
+        t: f32,
     };
 
     var traversal_stack: [bvh_max_depth + 1]RayMeshStackNode = undefined;
 
-    if (prim.intersectRayBoxDist(
+    if (prim.intersectRayBoxParamOnly(
         .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(mesh.bvh.nodes[0].bbox.center)) },
         math.makeVec3(mesh.bvh.nodes[0].bbox.extent),
-    )) |root_dist| {
+    )) |root_param| {
         traversal_stack[0].indx = 0;
-        traversal_stack[0].dist = root_dist;
+        traversal_stack[0].t = root_param;
     } else {
         return null;
     }
@@ -327,34 +327,34 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
         traversal_stack_head -= 1;
         const node: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[stack_node.indx];
 
-        if (result.dist <= stack_node.dist) continue;
+        if (result.t <= stack_node.t) continue;
 
         if (node.count == 0) {
             const child0: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset];
             const child1: *BoundingVolumeHierarchy.Node = &mesh.bvh.nodes[node.offset + 1];
 
-            const dist0: f32 = prim.intersectRayBoxDist(
+            const t0: f32 = prim.intersectRayBoxParamOnly(
                 .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child0.bbox.center)) },
                 child0.bbox.extent,
             ) orelse std.math.floatMax(f32);
-            const dist1: f32 = prim.intersectRayBoxDist(
+            const t1: f32 = prim.intersectRayBoxParamOnly(
                 .{ .d = ray.d, .o = sub(ray.o, math.makeVec3(child1.bbox.center)) },
                 child1.bbox.extent,
             ) orelse std.math.floatMax(f32);
 
-            var new_node0: RayMeshStackNode = .{ .indx = node.offset, .dist = dist0 };
-            var new_node1: RayMeshStackNode = .{ .indx = node.offset + 1, .dist = dist1 };
+            var new_node0: RayMeshStackNode = .{ .indx = node.offset, .t = t0 };
+            var new_node1: RayMeshStackNode = .{ .indx = node.offset + 1, .t = t1 };
 
-            if (new_node0.dist < new_node1.dist) {
+            if (new_node0.t < new_node1.t) {
                 std.mem.swap(RayMeshStackNode, &new_node0, &new_node1);
             }
 
-            if (new_node0.dist < std.math.floatMax(f32)) {
+            if (new_node0.t < std.math.floatMax(f32)) {
                 traversal_stack[traversal_stack_head] = new_node0;
                 traversal_stack_head += 1;
             }
 
-            if (new_node1.dist < std.math.floatMax(f32)) {
+            if (new_node1.t < std.math.floatMax(f32)) {
                 traversal_stack[traversal_stack_head] = new_node1;
                 traversal_stack_head += 1;
             }
@@ -367,7 +367,7 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
                     math.makeVec3(mesh.vrt[mesh.ind[3 * ti + 2]]),
                 } };
                 if (prim.intersectRayTriangle(ray, triangle)) |intersect| {
-                    if (intersect.dist < result.dist) {
+                    if (intersect.t < result.t) {
                         result = intersect;
                     }
                 }
@@ -375,7 +375,7 @@ pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
         }
     }
 
-    return if (result.dist == std.math.floatMax(f32)) null else result;
+    return if (result.t == std.math.floatMax(f32)) null else result;
 }
 
 test "BVH --- intersects" {
@@ -399,7 +399,7 @@ test "BVH --- intersects" {
     const ray: prim.Ray = .{ .o = .{ -2.0, 0.2, 0.2 }, .d = .{ 1.0, 0.0, 0.0 } };
 
     if (intersectRayMesh(ray, mesh)) |result| {
-        try std.testing.expectEqual(2.0, result.dist);
+        try std.testing.expectEqual(2.0, result.t);
         try std.testing.expectEqual(@as(Vec3, .{ -1.0, 0.0, 0.0 }), result.norm);
     } else {
         try std.testing.expect(false);

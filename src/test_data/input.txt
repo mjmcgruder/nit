@@ -12,7 +12,7 @@ horizontal_fov  = 90.0
 
 object sphere
     geom = 0.1
-    scale = 0.8  # TODO: fix this, scale on the sphere isn't working?
+    scale = 0.8
     translate = 0.0,0.0,-1.0
     refl = 1.0,1.0,1.0
     emit = 0.0,0.0,0.0

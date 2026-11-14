@@ -68,14 +68,14 @@ fn intersectRayObject(wray: prim.Ray, obj: Object) ?IntersectResult {
 pub fn intersectScene(ray: prim.Ray, scene: Scene) ?IntersectResult {
     const far = comptime std.math.floatMax(f32);
 
-    var intersect = IntersectResult{ .geom = .{ .dist = far } };
+    var intersect = IntersectResult{ .geom = .{ .t = far } };
     for (scene.objects) |object| {
         if (intersectRayObject(ray, object)) |result| {
-            if (result.geom.dist < intersect.geom.dist) {
+            if (result.geom.t < intersect.geom.t) {
                 intersect = result;
             }
         }
     }
 
-    return if (intersect.geom.dist == far) null else intersect;
+    return if (intersect.geom.t == far) null else intersect;
 }
