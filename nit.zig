@@ -191,17 +191,17 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var stdout_w = std.Io.File.stdout().writer(stdio, &.{});
     const stdout = &stdout_w.interface;
 
-    try stdout.print("\n\npreprocessing...\n\n\n", .{});
-
     var allocator_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer allocator_instance.deinit();
     const allocator: std.mem.Allocator = allocator_instance.allocator();
 
     const args = try init.args.toSlice(allocator);
     if (args.len != 2) {
-        try stdout.print("  usage: nit <input_file>\n", .{});
+        try stdout.print("  usage: {s} <input_file>\n", .{args[0]});
         return;
     }
+
+    try stdout.print("\n\npreprocessing...\n\n\n", .{});
 
     const settings: io.Settings, var objects: []geom.Object =
         try io.readInput(args[1], allocator, stdio, stdout);
