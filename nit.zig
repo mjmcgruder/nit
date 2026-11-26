@@ -7,6 +7,7 @@ const rand = @import("src/random.zig");
 const geom = @import("src/geometry.zig");
 const rend = @import("src/rendering.zig");
 const prim = @import("src/geometry_primitives.zig");
+const misc = @import("src/misc.zig");
 
 test {
     _ = math;
@@ -15,9 +16,10 @@ test {
     _ = geom;
 }
 
-var render_start: std.Io.Clock.Timestamp = undefined;
 const chunk_size: usize = 1 << 11;
 
+const print_interval: u64 = 100000000; // nanoseconds
+var render_start: std.Io.Clock.Timestamp = undefined;
 var last_print_time: u64 = 0; // nanoseconds since render_start
 var last_print_mutex: std.Io.Mutex = .init;
 
@@ -33,7 +35,6 @@ fn dispatchRender(
     thread_num: usize,
     frame_buffer: []io.Pixel,
     stdio: std.Io,
-    stdout: *std.Io.Writer,
 ) !void {
     var rng: rand.PCGHash = rand.PCGHash{ .state = @as(u32, @intCast(42 + thread_num)) };
     while (chunk_start < frame_buffer.len) {
@@ -51,7 +52,6 @@ fn dispatchRender(
                 chunk_end,
                 frame_buffer,
                 stdio,
-                stdout,
             );
         }
     }
@@ -61,11 +61,11 @@ fn printRenderProgress(
     current_time: u64,
     total_pixels: u64,
     stdio: std.Io,
-    stdout: *std.Io.Writer,
 ) !void {
     if (last_print_mutex.tryLock()) {
         defer last_print_mutex.unlock(stdio);
         last_print_time = current_time;
+        var stdout = misc.StdOut.init(stdio);
         try stdout.print("\x1b[1K\r", .{});
         try stdout.print(
             "   {d:5.1}% {d:.1}s",
@@ -86,10 +86,8 @@ fn render(
     end_i: usize,
     frame_buffer: []io.Pixel,
     stdio: std.Io,
-    stdout: *std.Io.Writer,
 ) !void {
-    var pixel_i: usize = begin_i;
-    while (pixel_i < end_i) : (pixel_i += 1) {
+    for (begin_i..end_i) |pixel_i| {
         // count each pixel for output progress update purposes
         _ = @atomicRmw(
             usize,
@@ -101,8 +99,8 @@ fn render(
 
         // occasionally print a progress update
         const current_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
-        if (current_time - last_print_time > 100000000) {
-            try printRenderProgress(current_time, frame_buffer.len, stdio, stdout);
+        if (current_time - last_print_time > print_interval) {
+            try printRenderProgress(current_time, frame_buffer.len, stdio);
         }
 
         // render
@@ -188,12 +186,11 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var io_instance: std.Io.Threaded = .init_single_threaded;
     const stdio = io_instance.io();
 
-    var stdout_w = std.Io.File.stdout().writer(stdio, &.{});
-    const stdout = &stdout_w.interface;
-
     var allocator_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer allocator_instance.deinit();
     const allocator: std.mem.Allocator = allocator_instance.allocator();
+
+    var stdout = misc.StdOut.init(stdio);
 
     const args = try init.args.toSlice(allocator);
     if (args.len != 2) {
@@ -203,19 +200,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     try stdout.print("\n\npreprocessing...\n\n\n", .{});
 
-    const settings: io.Settings, var objects: []geom.Object =
-        try io.readInput(args[1], allocator, stdio, stdout);
-
-    const scene = scene_light_sort: {
-        var num_lights: usize = 0;
-        for (0..objects.len) |oi| {
-            if (math.mag(objects[oi].emit) > 0.0) {
-                std.mem.swap(geom.Object, &objects[num_lights], &objects[oi]);
-                num_lights += 1;
-            }
-        }
-        break :scene_light_sort geom.Scene{ .objects = objects, .num_lights = num_lights };
-    };
+    const settings: io.Settings, const scene: geom.Scene = try io.readInput(args[1], allocator, stdio);
 
     // render
 
@@ -225,10 +210,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
         io.Pixel,
         settings.window_w * settings.window_h,
     );
-    @memset(frame_buffer, io.Pixel{});
+    @memset(frame_buffer, .{});
 
     render_start = .now(stdio, .awake);
-    last_print_time = 0;
 
     const pool = try allocator.alloc(std.Thread, settings.thread_count);
     for (pool, 0..) |*thread, thread_num| {
@@ -239,7 +223,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
             thread_num,
             frame_buffer,
             stdio,
-            stdout,
         });
     }
     for (pool) |thread| {
@@ -248,7 +231,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     // ensure 100% update is printed
     const final_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
-    try printRenderProgress(final_time, frame_buffer.len, stdio, stdout);
+    try printRenderProgress(final_time, frame_buffer.len, stdio);
 
     // finalize
 

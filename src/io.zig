@@ -1,9 +1,14 @@
 const std = @import("std");
 
-const m = @import("math.zig");
+const math = @import("math.zig");
 const geom = @import("geometry.zig");
 const rend = @import("rendering.zig");
+const misc = @import("misc.zig");
 const geom_mesh = @import("geometry_mesh.zig");
+
+const Vec3 = math.Vec3;
+const Vec4 = math.Vec4;
+const Vec3c = math.Vec3c;
 
 pub const Settings = struct {
     renderer: rend.Renderers = .path_tracing,
@@ -11,9 +16,9 @@ pub const Settings = struct {
     num_samples: usize = 1 << 0,
     window_w: usize = 1920,
     window_h: usize = 1080,
-    camera_position: m.Vec3 = .{ 0.0, 0.0, 0.0 },
-    target_position: m.Vec3 = .{ 1.0, 0.0, 0.0 },
-    up_vector: m.Vec3 = .{ 0.0, 1.0, 0.0 },
+    camera_position: Vec3 = .{ 0.0, 0.0, 0.0 },
+    target_position: Vec3 = .{ 1.0, 0.0, 0.0 },
+    up_vector: Vec3 = .{ 0.0, 1.0, 0.0 },
     field_of_view: f32 = 90.0,
 };
 
@@ -58,7 +63,7 @@ fn parseEnum(enum_type: type, string: []const u8) !enum_type {
     return ParsingError.UnknownEnumValue;
 }
 
-fn parseVec3(str: []const u8) !m.Vec3 {
+fn parseVec3(str: []const u8) !Vec3 {
     var it = std.mem.splitScalar(u8, str, ',');
     const elem0 = it.next() orelse return ParsingError.FormatError;
     const elem1 = it.next() orelse return ParsingError.FormatError;
@@ -71,7 +76,7 @@ fn parseVec3(str: []const u8) !m.Vec3 {
     };
 }
 
-fn parseVec4(str: []const u8) !m.Vec4 {
+fn parseVec4(str: []const u8) !Vec4 {
     var it = std.mem.splitScalar(u8, str, ',');
     const elem0 = it.next() orelse return ParsingError.FormatError;
     const elem1 = it.next() orelse return ParsingError.FormatError;
@@ -133,11 +138,12 @@ pub fn readInput(
     rel_path: []const u8,
     allocator: std.mem.Allocator,
     io: std.Io,
-    stdout: *std.Io.Writer,
-) !struct { Settings, []geom.Object } {
+) !struct { Settings, geom.Scene } {
     var workspace_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer workspace_instance.deinit();
     const workspace: std.mem.Allocator = workspace_instance.allocator();
+
+    var stdout = misc.StdOut.init(io);
 
     try stdout.print("Reading input file \"{s}\".\n", .{rel_path});
 
@@ -216,7 +222,7 @@ pub fn readInput(
                 var object: *geom.Object = &objects.items[objects.items.len - 1];
 
                 if (object_map.get(key)) |setting| {
-                    var transform: m.Mat4 = m.makeIdentityTransform();
+                    var transform: math.Mat4 = math.makeIdentityTransform();
 
                     switch (setting) {
                         .geometry => {
@@ -228,27 +234,31 @@ pub fn readInput(
                                     };
                                 },
                                 .box => |*value| value.* = blk: {
-                                    const size: m.Vec3 = try parseVec3(val);
-                                    break :blk .{ .min = m.mul(size, -1.0), .max = size };
+                                    const size: Vec3 = try parseVec3(val);
+                                    break :blk .{ .min = math.mul(size, -1.0), .max = size };
                                 },
                                 .mesh => |*value| value.* = blk: {
                                     try stdout.print("Reading ASCII STL file \"{s}\"... ", .{val});
+                                    const t0 = std.Io.Clock.awake.now(io);
                                     const raw_mesh = try readASCIISTL(val, workspace, io);
-                                    try stdout.print("done.\n", .{});
+                                    const t1 = std.Io.Clock.awake.now(io);
+                                    try stdout.print("done (in {d:.3}s).\n", .{misc.duration(t0, t1)});
 
                                     try stdout.print("Deduplicating mesh vertices... ", .{});
-                                    const dedupe_start = std.Io.Clock.awake.now(io).nanoseconds;
+                                    const t2 = std.Io.Clock.awake.now(io);
                                     var mesh = try geom_mesh.deDupeMesh(raw_mesh, allocator);
-                                    const dedupe_stop = std.Io.Clock.awake.now(io).nanoseconds;
-                                    const dedupe_duration = @as(f32, @floatFromInt(dedupe_stop - dedupe_start)) / std.time.ns_per_s;
-                                    try stdout.print("done ({f} -> {f} vertices in {d:.3}s).\n", .{ fmtComma(raw_mesh.vrt.len), fmtComma(mesh.vrt.len), dedupe_duration });
+                                    const t3 = std.Io.Clock.awake.now(io);
+                                    try stdout.print("done ({f} -> {f} vertices in {d:.3}s).\n", .{
+                                        misc.fmtComma(raw_mesh.vrt.len),
+                                        misc.fmtComma(mesh.vrt.len),
+                                        misc.duration(t2, t3),
+                                    });
 
                                     try stdout.print("Building BVH for \"{s}\"... ", .{val});
-                                    const bvh_build_start = std.Io.Clock.awake.now(io).nanoseconds;
+                                    const t4 = std.Io.Clock.awake.now(io);
                                     const stats = try geom_mesh.buildBVH(&mesh, allocator, 4, 1 << 4);
-                                    const bvh_build_stop = std.Io.Clock.awake.now(io).nanoseconds;
-                                    const bvh_build_duration = @as(f32, @floatFromInt(bvh_build_stop - bvh_build_start)) / std.time.ns_per_s;
-                                    try stdout.print("done (in {d:.3}s).\n", .{bvh_build_duration});
+                                    const t5 = std.Io.Clock.awake.now(io);
+                                    try stdout.print("done (in {d:.3}s).\n", .{misc.duration(t4, t5)});
                                     try geom_mesh.printBVHStats(stats, io);
 
                                     break :blk mesh;
@@ -257,16 +267,16 @@ pub fn readInput(
                         },
                         .rotate => {
                             const r = try parseVec4(val);
-                            transform = m.makeRotateTransform(.{ r[0], r[1], r[2] }, r[3]);
+                            transform = math.makeRotateTransform(.{ r[0], r[1], r[2] }, r[3]);
                         },
-                        .scale => transform = m.makeScaleTransform(try std.fmt.parseFloat(f32, val)),
-                        .translate => transform = m.makeTranslateTransform(try parseVec3(val)),
+                        .scale => transform = math.makeScaleTransform(try std.fmt.parseFloat(f32, val)),
+                        .translate => transform = math.makeTranslateTransform(try parseVec3(val)),
                         .reflectance => object.refl = try parseVec3(val),
                         .emittance => object.emit = try parseVec3(val),
                         .material => object.mtrl = try parseEnum(geom.Material, val),
                     }
 
-                    object.trfm = m.matmul4(transform, object.trfm);
+                    object.trfm = math.matmul4(transform, object.trfm);
                 } else {
                     return ParsingError.UnknownKey;
                 }
@@ -275,19 +285,22 @@ pub fn readInput(
     }
 
     for (objects.items) |*obj| {
-        obj.itfm = m.invertTransform(obj.trfm);
+        obj.itfm = math.invertTransform(obj.trfm);
     }
 
-    const final_objects: []geom.Object = try allocator.alloc(geom.Object, objects.items.len);
-    @memcpy(final_objects, objects.items);
+    var scene_objects: []geom.Object = try allocator.alloc(geom.Object, objects.items.len);
+    @memcpy(scene_objects, objects.items);
 
-    return .{ settings, final_objects };
+    var num_lights: usize = 0;
+    for (0..scene_objects.len) |oi| {
+        if (math.mag(scene_objects[oi].emit) > 0.0) {
+            std.mem.swap(geom.Object, &scene_objects[num_lights], &scene_objects[oi]);
+            num_lights += 1;
+        }
+    }
+
+    return .{ settings, .{ .objects = scene_objects, .num_lights = num_lights } };
 }
-
-const STLReadError = error{ // TODO: possibly generalize this
-    FormatError,
-    FacetLimitExceeded,
-};
 
 fn nextLine(r: *std.Io.Reader) ![]u8 {
     return try r.takeDelimiter('\n') orelse ParsingError.FormatError;
@@ -315,15 +328,15 @@ pub fn readASCIISTL(
         break :blk nfacets;
     };
 
-    const vrt = try allocator.alloc(m.Vec3c, num_facets * 3);
+    const vrt = try allocator.alloc(Vec3c, num_facets * 3);
     const ind = try allocator.alloc(u32, num_facets * 3);
 
     try file_reader.seekTo(0);
 
     const first_line = try nextLine(reader);
     var tok = std.mem.tokenizeAny(u8, first_line, whitespace);
-    if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "solid"))
-        return STLReadError.FormatError;
+    if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "solid"))
+        return ParsingError.FormatError;
 
     var vi: usize = 0;
     while (try reader.takeDelimiter('\n')) |line| {
@@ -335,24 +348,24 @@ pub fn readASCIISTL(
             return .{ .vrt = vrt, .ind = ind };
         }
 
-        if (!std.mem.eql(u8, keyword, "facet")) return STLReadError.FormatError;
-        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "normal"))
-            return STLReadError.FormatError;
+        if (!std.mem.eql(u8, keyword, "facet")) return ParsingError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "normal"))
+            return ParsingError.FormatError;
 
         tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
-        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "outer"))
-            return STLReadError.FormatError;
-        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "loop"))
-            return STLReadError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "outer"))
+            return ParsingError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "loop"))
+            return ParsingError.FormatError;
 
         for (0..3) |_| {
             tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
-            if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "vertex"))
-                return STLReadError.FormatError;
+            if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "vertex"))
+                return ParsingError.FormatError;
 
-            var vertex: m.Vec3c = .{ 0.0, 0.0, 0.0 };
+            var vertex: Vec3c = .{ 0.0, 0.0, 0.0 };
             inline for (0..3) |i| {
-                vertex[i] = try std.fmt.parseFloat(f32, tok.next() orelse return STLReadError.FormatError);
+                vertex[i] = try std.fmt.parseFloat(f32, tok.next() orelse return ParsingError.FormatError);
             }
             vrt[vi] = vertex;
             ind[vi] = @intCast(vi);
@@ -360,15 +373,15 @@ pub fn readASCIISTL(
         }
 
         tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
-        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "endloop"))
-            return STLReadError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "endloop"))
+            return ParsingError.FormatError;
 
         tok = std.mem.tokenizeAny(u8, try nextLine(reader), whitespace);
-        if (!std.mem.eql(u8, tok.next() orelse return STLReadError.FormatError, "endfacet"))
-            return STLReadError.FormatError;
+        if (!std.mem.eql(u8, tok.next() orelse return ParsingError.FormatError, "endfacet"))
+            return ParsingError.FormatError;
     }
 
-    return STLReadError.FormatError; // file ended without "endsolid"
+    return ParsingError.FormatError; // file ended without "endsolid"
 }
 
 test "readInput --- runs" {
@@ -388,93 +401,58 @@ test "readInput --- runs" {
     try std.testing.expectEqual(settings.num_samples, 1024);
     try std.testing.expectEqual(settings.window_w, 1920);
     try std.testing.expectEqual(settings.window_h, 1080);
-    try std.testing.expectEqual(settings.camera_position, @as(m.Vec3, .{ -2.0, 0.0, 0.0 }));
-    try std.testing.expectEqual(settings.target_position, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
-    try std.testing.expectEqual(settings.up_vector, @as(m.Vec3, .{ 0.0, 1.0, 0.0 }));
+    try std.testing.expectEqual(settings.camera_position, @as(Vec3, .{ -2.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(settings.target_position, @as(Vec3, .{ 0.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(settings.up_vector, @as(Vec3, .{ 0.0, 1.0, 0.0 }));
     try std.testing.expectEqual(settings.field_of_view, 90.0);
 
     try std.testing.expectEqual(scene[0].geom.sphere.r, 0.1);
-    try std.testing.expectEqual(scene[0].trfm, @as(m.Mat4, .{
+    try std.testing.expectEqual(scene[0].trfm, @as(math.Mat4, .{
         .{ 0.8, 0.0, 0.0, 0.0 },
         .{ 0.0, 0.8, 0.0, 0.0 },
         .{ 0.0, 0.0, 0.8, -1.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     }));
-    try std.testing.expectEqual(scene[0].refl, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
-    try std.testing.expectEqual(scene[0].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(scene[0].refl, @as(Vec3, .{ 1.0, 1.0, 1.0 }));
+    try std.testing.expectEqual(scene[0].emit, @as(Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[0].mtrl, geom.Material.specular);
 
-    try std.testing.expectEqual(scene[1].geom.box.size(), @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
-    try std.testing.expectEqual(scene[1].trfm, @as(m.Mat4, .{
+    try std.testing.expectEqual(scene[1].geom.box.size(), @as(Vec3, .{ 1.0, 1.0, 1.0 }));
+    try std.testing.expectEqual(scene[1].trfm, @as(math.Mat4, .{
         .{ 0.08047379, -0.031061722, 0.050587934, 0 },
         .{ 0.050587934, 0.08047379, -0.031061722, 0 },
         .{ -0.031061722, 0.050587934, 0.08047379, 1 },
         .{ 0, 0, 0, 1 },
     }));
-    try std.testing.expectEqual(scene[1].refl, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
-    try std.testing.expectEqual(scene[1].emit, @as(m.Vec3, .{ 12.0, 12.0, 12.0 }));
+    try std.testing.expectEqual(scene[1].refl, @as(Vec3, .{ 0.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(scene[1].emit, @as(Vec3, .{ 12.0, 12.0, 12.0 }));
     try std.testing.expectEqual(scene[1].mtrl, geom.Material.diffuse);
 
     const mesh: geom_mesh.Mesh = scene[2].geom.mesh;
 
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[0]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[1]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[2]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[0]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[1]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[2]]);
 
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[3]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[4]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[5]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[3]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[4]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[5]]);
 
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[6]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[7]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[8]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[6]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[7]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[8]]);
 
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[9]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[10]]);
-    try std.testing.expectEqual(@as(m.Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[11]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 1.0, 0.0, 0.0 }), mesh.vrt[mesh.ind[9]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 0.0, 1.0 }), mesh.vrt[mesh.ind[10]]);
+    try std.testing.expectEqual(@as(Vec3c, .{ 0.0, 1.0, 0.0 }), mesh.vrt[mesh.ind[11]]);
 
-    try std.testing.expectEqual(scene[2].trfm, @as(m.Mat4, .{
+    try std.testing.expectEqual(scene[2].trfm, @as(math.Mat4, .{
         .{ 1.0, 0.0, 0.0, 0.0 },
         .{ 0.0, 1.0, 0.0, 0.0 },
         .{ 0.0, 0.0, 1.0, 0.0 },
         .{ 0.0, 0.0, 0.0, 1.0 },
     }));
-    try std.testing.expectEqual(scene[2].refl, @as(m.Vec3, .{ 1.0, 1.0, 1.0 }));
-    try std.testing.expectEqual(scene[2].emit, @as(m.Vec3, .{ 0.0, 0.0, 0.0 }));
+    try std.testing.expectEqual(scene[2].refl, @as(Vec3, .{ 1.0, 1.0, 1.0 }));
+    try std.testing.expectEqual(scene[2].emit, @as(Vec3, .{ 0.0, 0.0, 0.0 }));
     try std.testing.expectEqual(scene[2].mtrl, geom.Material.diffuse);
-}
-
-pub fn fmtComma(value: anytype) CommaFormatter(@TypeOf(value)) {
-    const info = @typeInfo(@TypeOf(value));
-    if (info != .int and info != .comptime_int) {
-        @compileError("integer type required for comma formatting, got " ++ @typeName(@TypeOf(value)));
-    }
-
-    return .{ .value = value };
-}
-
-fn CommaFormatter(comptime T: type) type {
-    return struct {
-        value: T,
-
-        pub fn format(self: @This(), writer: *std.Io.Writer) !void {
-            if (self.value == 0) { // this check is necessary due to exit condition of loop below
-                try writer.writeByte('0');
-                return;
-            }
-            if (self.value < 0) try writer.writeByte('-');
-            var val: u64 = @intCast(@abs(self.value));
-            var buf: [32]u8 = undefined; // note 10^20 > 2^64
-            var len: usize = 0;
-            while (val > 0) : (len += 1) {
-                buf[len] = @intCast(@mod(val, 10) + '0');
-                val = @divTrunc(val, 10);
-            }
-            var i: usize = 0;
-            while (i < len) : (i += 1) {
-                if (i > 0 and @mod(len - i, 3) == 0) try writer.writeByte(',');
-                try writer.writeByte(buf[len - 1 - i]);
-            }
-        }
-    };
 }

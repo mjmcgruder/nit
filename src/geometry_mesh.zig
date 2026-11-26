@@ -3,6 +3,7 @@ const std = @import("std");
 const io = @import("io.zig");
 const math = @import("math.zig");
 const prim = @import("geometry_primitives.zig");
+const misc = @import("misc.zig");
 
 const add = math.add;
 const sub = math.sub;
@@ -299,6 +300,37 @@ test "BVH --- splits planes" {
     }
 }
 
+pub const BVHStats = struct {
+    mesh_ntri: usize = 0,
+    depth_min: u32 = std.math.maxInt(u32),
+    depth_max: u32 = 0,
+    depth_average: f32 = 0.0,
+    nodes_total: u32 = 0,
+    nodes_interior: u32 = 0,
+    nodes_leaf: u32 = 0,
+    tris_min: u32 = std.math.maxInt(u32),
+    tris_max: u32 = 0,
+    tris_average: f32 = 0.0,
+};
+
+pub fn printBVHStats(stats: BVHStats, stdio: std.Io) !void {
+    var stdout_buffer: [1 << 10]u8 = undefined;
+    var stdout_w = std.Io.File.stdout().writer(stdio, &stdout_buffer);
+    const stdout = &stdout_w.interface;
+    defer stdout.flush() catch {};
+
+    try stdout.print("  mesh triangles:    {f}\n", .{misc.fmtComma(stats.mesh_ntri)});
+    try stdout.print("  average depth:     {d:.1}\n", .{stats.depth_average});
+    try stdout.print("  min depth:         {}\n", .{stats.depth_min});
+    try stdout.print("  max depth:         {}\n", .{stats.depth_max});
+    try stdout.print("  total nodes:       {f}\n", .{misc.fmtComma(stats.nodes_total)});
+    try stdout.print("  interior nodes:    {f}\n", .{misc.fmtComma(stats.nodes_interior)});
+    try stdout.print("  leaf nodes:        {f}\n", .{misc.fmtComma(stats.nodes_leaf)});
+    try stdout.print("  min triangles:     {f}\n", .{misc.fmtComma(stats.tris_min)});
+    try stdout.print("  max triangles:     {f}\n", .{misc.fmtComma(stats.tris_max)});
+    try stdout.print("  average triangles: {d:.2}\n", .{stats.tris_average});
+}
+
 pub fn intersectRayMesh(ray: prim.Ray, mesh: Mesh) ?prim.IntersectResult {
     var result: prim.IntersectResult = .{ .t = std.math.floatMax(f32), .norm = undefined };
 
@@ -506,35 +538,4 @@ test "deDupeMesh --- cube" {
 
     const result = try deDupeMesh(mesh, arena_main.allocator());
     try std.testing.expectEqual(@as(usize, 8), result.vrt.len);
-}
-
-pub const BVHStats = struct {
-    mesh_ntri: usize = 0,
-    depth_min: u32 = std.math.maxInt(u32),
-    depth_max: u32 = 0,
-    depth_average: f32 = 0.0,
-    nodes_total: u32 = 0,
-    nodes_interior: u32 = 0,
-    nodes_leaf: u32 = 0,
-    tris_min: u32 = std.math.maxInt(u32),
-    tris_max: u32 = 0,
-    tris_average: f32 = 0.0,
-};
-
-pub fn printBVHStats(stats: BVHStats, stdio: std.Io) !void {
-    var stdout_buffer: [1 << 10]u8 = undefined;
-    var stdout_w = std.Io.File.stdout().writer(stdio, &stdout_buffer);
-    const stdout = &stdout_w.interface;
-    defer stdout.flush() catch {};
-
-    try stdout.print("  mesh triangles:    {f}\n", .{io.fmtComma(stats.mesh_ntri)});
-    try stdout.print("  average depth:     {d:.1}\n", .{stats.depth_average});
-    try stdout.print("  min depth:         {}\n", .{stats.depth_min});
-    try stdout.print("  max depth:         {}\n", .{stats.depth_max});
-    try stdout.print("  total nodes:       {f}\n", .{io.fmtComma(stats.nodes_total)});
-    try stdout.print("  interior nodes:    {f}\n", .{io.fmtComma(stats.nodes_interior)});
-    try stdout.print("  leaf nodes:        {f}\n", .{io.fmtComma(stats.nodes_leaf)});
-    try stdout.print("  min triangles:     {f}\n", .{io.fmtComma(stats.tris_min)});
-    try stdout.print("  max triangles:     {f}\n", .{io.fmtComma(stats.tris_max)});
-    try stdout.print("  average triangles: {d:.2}\n", .{stats.tris_average});
 }
