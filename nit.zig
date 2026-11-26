@@ -18,9 +18,10 @@ test {
 
 const chunk_size: usize = 1 << 11;
 
-const print_interval: u64 = 100000000; // nanoseconds
-var render_start: std.Io.Clock.Timestamp = undefined;
-var last_print_time: u64 = 0; // nanoseconds since render_start
+const print_interval: f64 = 0.1;
+const print_precision: usize = @intFromFloat(@abs(@min(@log10(print_interval), 0.0)));
+var render_start_time: std.Io.Timestamp = undefined;
+var last_print_time: std.Io.Timestamp = undefined;
 var last_print_mutex: std.Io.Mutex = .init;
 
 var chunk_start: usize = 0;
@@ -58,9 +59,10 @@ fn dispatchRender(
 }
 
 fn printRenderProgress(
-    current_time: u64,
+    current_time: std.Io.Timestamp,
     total_pixels: u64,
     stdio: std.Io,
+    comptime precision: usize,
 ) !void {
     if (last_print_mutex.tryLock()) {
         defer last_print_mutex.unlock(stdio);
@@ -68,10 +70,11 @@ fn printRenderProgress(
         var stdout = misc.StdOut.init(stdio);
         try stdout.print("\x1b[1K\r", .{});
         try stdout.print(
-            "   {d:5.1}% {d:.1}s",
+            "   {d:5.1}% {d:.[2]}s",
             .{
                 @as(f32, @floatFromInt(finished_pixels)) / @as(f32, @floatFromInt(total_pixels)) * 100.0,
-                @as(f32, @floatFromInt(current_time)) / 1.0e9,
+                misc.duration(render_start_time, current_time),
+                precision
             },
         );
     }
@@ -98,9 +101,9 @@ fn render(
         );
 
         // occasionally print a progress update
-        const current_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
-        if (current_time - last_print_time > print_interval) {
-            try printRenderProgress(current_time, frame_buffer.len, stdio);
+        const current_time: std.Io.Timestamp = std.Io.Clock.awake.now(stdio);
+        if (misc.duration(last_print_time, current_time) > print_interval) {
+            try printRenderProgress(current_time, frame_buffer.len, stdio, print_precision);
         }
 
         // render
@@ -212,7 +215,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     );
     @memset(frame_buffer, .{});
 
-    render_start = .now(stdio, .awake);
+    render_start_time = std.Io.Clock.awake.now(stdio);
+    try printRenderProgress(render_start_time, frame_buffer.len, stdio, print_precision);
 
     const pool = try allocator.alloc(std.Thread, settings.thread_count);
     for (pool, 0..) |*thread, thread_num| {
@@ -230,8 +234,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     }
 
     // ensure 100% update is printed
-    const final_time: u64 = @intCast(render_start.untilNow(stdio).raw.nanoseconds);
-    try printRenderProgress(final_time, frame_buffer.len, stdio);
+    const render_stop_time: std.Io.Timestamp = std.Io.Clock.awake.now(stdio);
+    try printRenderProgress(render_stop_time, frame_buffer.len, stdio, 3);
 
     // finalize
 
